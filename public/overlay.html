@@ -5,7 +5,7 @@
 <canvas id="overlay" width="1920" height="1080" style="position:absolute;"></canvas>
 <script src="/socket.io/socket.io.js"></script>
 <script>
-  const socket = io();
+  const socket = io("https://interactive-website-9620.onrender.com");
   const canvas = document.getElementById('overlay');
   const ctx = canvas.getContext('2d');
   const players = {};
