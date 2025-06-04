@@ -11,12 +11,18 @@
   canvas.setAttribute('tabindex', '0');
   canvas.focus();
 
+  const vals = canvas.getContext('2d');
   const ctx = canvas.getContext('2d');
   let x = 100, y = 100;
 
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "blue";
+    vals.font = 'bold 48px Arial';
+    vals.fillStyle = 'red'; // Text color
+    vals.textAlign = 'center'; // Horizontal alignment
+    vals.textBaseline = 'middle'; // Vertical alignment
+
     ctx.fillRect(x, y, 20, 20);
   }
 
