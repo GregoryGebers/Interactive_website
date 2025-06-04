@@ -1,31 +1,82 @@
 <!DOCTYPE html>
 <html>
-<head><title>Stream Overlay</title></head>
-<body style="margin:0; background:transparent;">
-<canvas id="overlay" width="1920" height="1080" style="position:absolute;"></canvas>
-<script src="/socket.io/socket.io.js"></script>
-<script>
-  const socket = io("https://interactive-website-9620.onrender.com");
-  const canvas = document.getElementById('overlay');
-  const ctx = canvas.getContext('2d');
-  const players = {};
-
-  function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    for (const id in players) {
-      const p = players[id];
-      ctx.fillStyle = "red";
-      ctx.fillRect(p.x, p.y, 20, 20);
+<head>
+  <title>Overlay</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: transparent;
     }
-    requestAnimationFrame(draw);
-  }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="overlay"></canvas>
 
-  draw();
+  <!-- Load Socket.IO client library from your server -->
+  <script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
+  <script>
+    // Establish connection to the Socket.IO server
+    const socket = io("https://interactive-website-9620.onrender.com");
 
-  socket.on("init", data => Object.assign(players, data));
-  socket.on("new-player", data => players[data.id] = data);
-  socket.on("player-move", data => players[data.id] = data);
-  socket.on("remove-player", id => delete players[id]);
-</script>
+    // Get the canvas and its context
+    const canvas = document.getElementById('overlay');
+    const ctx = canvas.getContext('2d');
+
+    // Set canvas dimensions to match the window
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Object to store player data
+    const players = {};
+
+    // Function to draw all players
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const id in players) {
+        const player = players[id];
+        ctx.fillStyle = 'blue';
+        ctx.fillRect(player.x, player.y, 20, 20);
+      }
+    }
+
+    // Listen for initialization data from the server
+    socket.on('init', (data) => {
+      Object.assign(players, data);
+      draw();
+    });
+
+    // Listen for new players
+    socket.on('new-player', (data) => {
+      players[data.id] = { x: data.x, y: data.y, emote: data.emote };
+      draw();
+    });
+
+    // Listen for player movements
+    socket.on('player-move', (data) => {
+      if (players[data.id]) {
+        players[data.id].x = data.x;
+        players[data.id].y = data.y;
+        players[data.id].emote = data.emote;
+        draw();
+      }
+    });
+
+    // Listen for player disconnections
+    socket.on('remove-player', (id) => {
+      delete players[id];
+      draw();
+    });
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      draw();
+    });
+  </script>
 </body>
 </html>
