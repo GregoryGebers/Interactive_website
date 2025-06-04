@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head><title>Control Your Character</title></head>
+<body>
+<canvas id="game" width="500" height="300" style="border:1px solid black;"></canvas>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  let x = 100, y = 100;
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "blue";
+    ctx.fillRect(x, y, 20, 20);
+  }
+
+  draw();
+
+  document.addEventListener('keydown', e => {
+    if (e.key === "ArrowRight") x += 5;
+    if (e.key === "ArrowLeft") x -= 5;
+    if (e.key === "ArrowUp") y -= 5;
+    if (e.key === "ArrowDown") y += 5;
+    socket.emit("move", { x, y, emote: "idle" });
+    draw();
+  });
+</script>
+</body>
+</html>

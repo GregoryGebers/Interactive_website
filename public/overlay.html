@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head><title>Stream Overlay</title></head>
+<body style="margin:0; background:transparent;">
+<canvas id="overlay" width="1920" height="1080" style="position:absolute;"></canvas>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+  const canvas = document.getElementById('overlay');
+  const ctx = canvas.getContext('2d');
+  const players = {};
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const id in players) {
+      const p = players[id];
+      ctx.fillStyle = "red";
+      ctx.fillRect(p.x, p.y, 20, 20);
+    }
+    requestAnimationFrame(draw);
+  }
+
+  draw();
+
+  socket.on("init", data => Object.assign(players, data));
+  socket.on("new-player", data => players[data.id] = data);
+  socket.on("player-move", data => players[data.id] = data);
+  socket.on("remove-player", id => delete players[id]);
+</script>
+</body>
+</html>
