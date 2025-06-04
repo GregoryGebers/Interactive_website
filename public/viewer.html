@@ -18,7 +18,7 @@
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "blue";
-    vals.font = 'bold 48px Arial';
+    vals.font = 'bold 10px Arial';
     vals.fillStyle = 'red'; // Text color
     vals.textAlign = 'center'; // Horizontal alignment
     //vals.textBaseline = 'middle'; // Vertical alignment
@@ -29,7 +29,7 @@
     vals.strokeStyle = 'black';
 
     vals.lineWidth = 2;
-    vals.strokeText("x :" + x + ", y: " + y, x/2, y + 5);
+    vals.strokeText("x :" + x + ", y: " + y, x, y + 20);
   }
 
   draw();
