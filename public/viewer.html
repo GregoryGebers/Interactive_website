@@ -7,7 +7,7 @@
 <script>
   const socket = io("https://interactive-website-9620.onrender.com");
 
-  const canvas = document.getElementById('game');
+ const canvas = document.getElementById('game');
   canvas.setAttribute('tabindex', '0');
   canvas.focus();
   const playObj = canvas.getContext('2d');
@@ -19,7 +19,10 @@
     Yv: 0,
     Xv: 0,
     gravity: 500,
-    onGround: false
+    onGround: false,
+    friction: 400,
+    speedMax : 500,
+    running : false
   };
   let lastTime = performance.now();
 
@@ -35,6 +38,20 @@
   }
 
   function update(deltaTime) {
+
+    if(player.onGround) {
+      if (player.Xv >= -29 && player.Xv <= 29 && player.running == false) {
+        player.Xv = 0;
+      }
+      if(player.running == false && player.Xv > 0) {
+        player.Xv -= player.friction*deltaTime;
+
+        
+      } else if (player.running == false && player.Xv < 0){
+        player.Xv += player.friction*deltaTime;
+      }
+    }
+    player.x += player.Xv*deltaTime;
     if(!player.onGround) {
           player.Yv += player.gravity*deltaTime;
 
@@ -57,9 +74,38 @@
   }
   
   canvas.addEventListener('keydown', e => {
-    if (e.key === "ArrowRight") player.x += 5;
-    if (e.key === "ArrowLeft") player.x -= 5;
-    if (e.key === "ArrowUp") player.Yv = -500;
+    if (e.key === "ArrowRight" && player.onGround) {
+      player.Xv = 200;
+      player.running = true;
+      if (player.Xv >= player.speedMax ) {
+        player.Xv = player.speedMax;
+      }
+    }
+    if (e.key === "ArrowLeft" && player.onGround) {
+      player.Xv = -200;
+      player.running = true;
+      if (player.Xv <= -1*player.speedMax) {
+        player.Xv = -1* player.speedMax;
+      }
+    }
+    if (e.key === "ArrowUp")  {
+      if(player.onGround) {
+      player.onGround = false;
+      player.Yv = -250;
+      }
+    }
+    socket.emit("move", { x: player.x , y: player.y , emote: "idle" });
+    draw();
+    //equestAnimationFrame(gameLoop);
+  });
+
+  canvas.addEventListener('keyup', e => {
+    if (e.key === "ArrowRight") {
+      player.running = false;
+    }
+    if (e.key === "ArrowLeft") {
+      player.running = false;
+    }
     socket.emit("move", { x: player.x , y: player.y , emote: "idle" });
     draw();
   });
