@@ -70,6 +70,7 @@
     playObj.fillStyle = 'blue';
 
     playObj.fillRect(player.x, player.y, player.width, player.height);
+    socket.emit("move", { x: player.x , y: player.y , emote: "idle" });
     
   }
   
