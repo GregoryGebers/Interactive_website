@@ -10,37 +10,60 @@
   const canvas = document.getElementById('game');
   canvas.setAttribute('tabindex', '0');
   canvas.focus();
+  const playObj = canvas.getContext('2d');
+  const player = {
+    x: 100,
+    y: 100,
+    width: 20,
+    height: 20,
+    Yv: 0,
+    Xv: 0,
+    gravity: 500,
+    onGround: false
+  };
+  let lastTime = performance.now();
 
-  const vals = canvas.getContext('2d');
-  const ctx = canvas.getContext('2d');
-  let x = 100, y = 100;
+  function gameLoop(currentTime) {
+    const deltaTime = (currentTime - lastTime)/1000;
+    lastTime = currentTime;
 
-  function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "blue";
-    vals.font = 'bold 15px Arial';
-    vals.fillStyle = 'red'; // Text color
-    vals.textAlign = 'center'; // Horizontal alignment
-    //vals.textBaseline = 'middle'; // Vertical alignment
+    update(deltaTime);
+    draw();
 
-    //vals.fillText("x :" + x + ", y: " + y, x/2, y + 5);
-    ctx.fillRect(x, y, 20, 20);
+    requestAnimationFrame(gameLoop);
 
-    vals.strokeStyle = 'black';
-    vals.lineWidth = 1;
-    vals.strokeText("x :" + x + ", y: " + y, x, y - 50);
   }
 
-  draw();
+  function update(deltaTime) {
+    if(!player.onGround) {
+          player.Yv += player.gravity*deltaTime;
 
+          player.y += player.Yv *deltaTime;
+    }
+    if (player.y + player.height >= canvas.height) {
+        player.y = canvas.height - player.height;
+        player.velocitY = 0;
+      player.onGround = true;
+    }
+  }
+
+
+  function draw() {
+    playerObj.clearRect(0, 0, canvas.width, canvas.height);
+    playerObj.fillStyle = 'blue';
+
+    playerObj.fillRect(player.x, player.y, player.width, player.height);
+    
+  }
+  
   canvas.addEventListener('keydown', e => {
-    if (e.key === "ArrowRight") x += 5;
-    if (e.key === "ArrowLeft") x -= 5;
-    if (e.key === "ArrowUp") y -= 5;
-    if (e.key === "ArrowDown") y += 5;
-    socket.emit("move", { x, y, emote: "idle" });
+    if (e.key === "ArrowRight") player.x += 5;
+    if (e.key === "ArrowLeft") player.x -= 5;
+    if (e.key === "ArrowUp") player.Yv = -50;
+    socket.emit("move", { player.x, player.y, emote: "idle" });
     draw();
   });
+  requestAnimationFrame(gameLoop);
 </script>
 </body>
 </html>
