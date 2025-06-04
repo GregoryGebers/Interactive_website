@@ -42,17 +42,17 @@
     }
     if (player.y + player.height >= canvas.height) {
         player.y = canvas.height - player.height;
-        player.velocitY = 0;
+        player.Yv = 0;
       player.onGround = true;
     }
   }
 
 
   function draw() {
-    playerObj.clearRect(0, 0, canvas.width, canvas.height);
-    playerObj.fillStyle = 'blue';
+    playObj.clearRect(0, 0, canvas.width, canvas.height);
+    playObj.fillStyle = 'blue';
 
-    playerObj.fillRect(player.x, player.y, player.width, player.height);
+    playObj.fillRect(player.x, player.y, player.width, player.height);
     
   }
   
@@ -60,7 +60,7 @@
     if (e.key === "ArrowRight") player.x += 5;
     if (e.key === "ArrowLeft") player.x -= 5;
     if (e.key === "ArrowUp") player.Yv = -50;
-    socket.emit("move", { player.x, player.y, emote: "idle" });
+    socket.emit("move", { x: player.x , y: player.y , emote: "idle" });
     draw();
   });
   requestAnimationFrame(gameLoop);
