@@ -1,49 +1,58 @@
 const express = require('express');
+const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
+
+// Initialize Socket.IO with CORS settings
 const io = new Server(server, {
   cors: {
-    origin: '*', // Allow all origins (GitHub Pages, OBS, etc.)
+    origin: '*', // Adjust this as needed for security
     methods: ['GET', 'POST']
   }
 });
 
-// Serve static files from /public
-app.use(express.static('public'));
+// Serve static files from the 'public' directory
+app.use(express.static(path.join(__dirname, 'public')));
 
+// Optional: Define a route for the root URL
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'viewer.html'));
+});
+
+// Object to track connected players
 let players = {};
 
-// Handle socket connections
+// Handle Socket.IO connections
 io.on('connection', (socket) => {
-  console.log('New client connected:', socket.id);
+  console.log(`New client connected: ${socket.id}`);
 
-  // Add new player
+  // Initialize new player
   players[socket.id] = { x: 100, y: 100, emote: 'idle' };
 
-  // Send all current players to new client
+  // Send current players to the new client
   socket.emit('init', players);
 
-  // Inform others about new player
+  // Notify others about the new player
   socket.broadcast.emit('new-player', { id: socket.id, ...players[socket.id] });
 
-  // When player moves
+  // Handle player movement
   socket.on('move', (data) => {
     players[socket.id] = data;
     socket.broadcast.emit('player-move', { id: socket.id, ...data });
   });
 
-  // When player disconnects
+  // Handle client disconnection
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+    console.log(`Client disconnected: ${socket.id}`);
     delete players[socket.id];
     io.emit('remove-player', socket.id);
   });
 });
 
-// Start server (use port from env or default to 3000)
+// Start the server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
