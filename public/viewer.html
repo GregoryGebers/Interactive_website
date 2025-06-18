@@ -3,11 +3,24 @@
 <head><title>Control Your Character</title></head>
 <body>
 <canvas id="game" width="500" height="300" style="border:1px solid black;"></canvas>
-<script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
+<script src=""https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
 <script>
   const socket = io("https://interactive-website-9620.onrender.com");
 
- const canvas = document.getElementById('game');
+  const img = new Image();
+  img.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png';
+  img.onload = () => {
+    requestAnimationFrame(gameLoop);
+  };
+
+  const animations = {
+    frameWidth: 64,
+    frameHeight: 64,
+    frameCount: 6,
+    currentFrame: 0,
+    frameRow: 0
+  };
+  const canvas = document.getElementById('game');
   canvas.setAttribute('tabindex', '0');
   canvas.focus();
   const playObj = canvas.getContext('2d');
@@ -22,9 +35,18 @@
     onGround: false,
     friction: 400,
     speedMax : 500,
-    running : false
+    running : false,
+    username: "",
+    action: "idle"
   };
   let lastTime = performance.now();
+  usernameprompt();
+  function usernameprompt(){
+    player.username = prompt("Please Enter your username:", 'Player1') || 'player1';
+    console.log('Username chosen:', player.username);
+    socket.emit('new-Player', {id: socket.id, name: player.username});
+  }
+
 
   function gameLoop(currentTime) {
     const deltaTime = (currentTime - lastTime)/1000;
@@ -37,11 +59,27 @@
 
   }
 
+  let frameTimer = 0;
+  let animationStopper = false;
+  const frameInterval = 0.1;
   function update(deltaTime) {
 
+    frameTimer += deltaTime;
+    if (frameTimer >= frameInterval) {
+      animations.currentFrame = (animations.currentFrame + 1) % animations.frameCount;
+      frameTimer = 0;
+    }
     if(player.onGround) {
       if (player.Xv >= -29 && player.Xv <= 29 && player.running == false) {
         player.Xv = 0;
+        if (animationStopper == false) {
+        img.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png';
+        player.action = "idle";
+        animations.currentFrame = 0;
+        animations.frameCount = 6;
+        animations.frameRow = 0;
+        animationStopper = true;
+        }
       }
       if(player.running == false && player.Xv > 0) {
         player.Xv -= player.friction*deltaTime;
@@ -67,15 +105,36 @@
 
   function draw() {
     playObj.clearRect(0, 0, canvas.width, canvas.height);
+    
+    playObj.drawImage(
+      img,
+      animations.currentFrame * animations.frameWidth, 
+      animations.frameRow * animations.frameHeight,
+      animations.frameWidth, animations.frameHeight,
+      player.x- 20, player.y - 20,
+      animations.frameWidth, animations.frameHeight
+    );
+    
+    playObj.font = '16px Arial';
     playObj.fillStyle = 'blue';
+    playObj.textAlign = 'center';
+    playObj.textBaseline = 'bottom';
 
-    playObj.fillRect(player.x, player.y, player.width, player.height);
-    socket.emit("move", { x: player.x , y: player.y , emote: "idle" });
+    playObj.fillText(player.username, player.x + player.width/2, player.y - 5);
+    socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action });
     
   }
   
   canvas.addEventListener('keydown', e => {
     if (e.key === "ArrowRight" && player.onGround) {
+      player.action = "run";
+      if (player.running == false){
+      img.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Run/Slime1_Run_body.png'
+      animations.currentFrame = 0;
+      animations.frameCount = 8;
+      animations.frameRow = 3;
+      animationStopper = false;
+      }
       player.Xv = 200;
       player.running = true;
       if (player.Xv >= player.speedMax ) {
@@ -83,6 +142,14 @@
       }
     }
     if (e.key === "ArrowLeft" && player.onGround) {
+      player.action = "run";
+      if (player.running == false){
+      img.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Run/Slime1_Run_body.png'
+      animations.currentFrame = 0;
+      animations.frameCount = 8;
+      animations.frameRow = 2;
+      animationStopper = false;
+      }
       player.Xv = -200;
       player.running = true;
       if (player.Xv <= -1*player.speedMax) {
@@ -95,7 +162,7 @@
       player.Yv = -250;
       }
     }
-    socket.emit("move", { x: player.x , y: player.y , emote: "idle" });
+    socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action });
     draw();
     //equestAnimationFrame(gameLoop);
   });
@@ -107,7 +174,7 @@
     if (e.key === "ArrowLeft") {
       player.running = false;
     }
-    socket.emit("move", { x: player.x , y: player.y , emote: "idle" });
+    socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action });
     draw();
   });
   requestAnimationFrame(gameLoop);
