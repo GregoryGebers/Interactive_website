@@ -39,9 +39,18 @@ io.on('connection', (socket) => {
   socket.broadcast.emit('new-player', { id: socket.id, ...players[socket.id] });
 
   // Handle player movement
-  socket.on('move', (data) => {
-    players[socket.id] = data;
-    socket.broadcast.emit('player-move', { id: socket.id, ...data });
+   socket.on("move", (data) => {
+    players[socket.id] = { 
+      x: data.x,
+      y: data.y,
+      frameCount: data.frameCount,
+      frameIndex: data.frameIndex,
+      frameRow: data.frameRow,
+      username: data.username,
+      emote: data.emote
+
+    };
+    socket.broadcast.emit("player-move", { id: socket.id, ...players[socket.id] });
   });
 
   // Handle client disconnection
