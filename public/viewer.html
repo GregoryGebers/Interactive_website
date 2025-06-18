@@ -3,8 +3,18 @@
 <head><title>Control Your Character</title></head>
 <body>
 <canvas id="game" width="500" height="300" style="border:1px solid black;"></canvas>
-<script src=""https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
+<div id="loginOverlay" 
+       style="position:absolute; top:0; left:0; width:500px; height:300px;
+              display:flex; align-items:center; justify-content:center;
+              background:rgba(0,0,0,0.5); z-index:10;">
+    <input id="usernameInput" type="text" placeholder="Enter username" 
+           style="font-size:20px; padding:10px; width:60%;" />
+    <button id="usernameBtn" style="font-size:20px; margin-left:10px;">Go</button>
+  </div>
+<script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
 <script>
+  //"https://interactive-website-9620.onrender.com/socket.io/socket.io.js"
+  //"https://interactive-website-9620.onrender.com"
   const socket = io("https://interactive-website-9620.onrender.com");
 
   const img = new Image();
@@ -42,9 +52,17 @@
   let lastTime = performance.now();
   usernameprompt();
   function usernameprompt(){
-    player.username = prompt("Please Enter your username:", 'Player1') || 'player1';
-    console.log('Username chosen:', player.username);
-    socket.emit('new-Player', {id: socket.id, name: player.username});
+    const overlay = document.getElementById('loginOverlay');
+const input = document.getElementById('usernameInput');
+const button = document.getElementById('usernameBtn');
+
+button.addEventListener('click', () => {
+  const name = input.value.trim() || 'Player1';
+  player.username = name;
+  socket.emit('new-Player', { id: socket.id, name });
+  overlay.style.display = 'none';
+  canvas.focus();  // Return focus to canvas for key events
+});
   }
 
 
@@ -142,7 +160,7 @@
       }
     }
     if (e.key === "ArrowLeft" && player.onGround) {
-      player.action = "run";
+      player.action = "idle";
       if (player.running == false){
       img.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Run/Slime1_Run_body.png'
       animations.currentFrame = 0;
