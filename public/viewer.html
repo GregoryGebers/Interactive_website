@@ -17,12 +17,18 @@
   //"https://interactive-website-9620.onrender.com"
   const socket = io("https://interactive-website-9620.onrender.com");
 
-  const img = new Image();
-  img.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png';
-  img.onload = () => {
+ const idleImg = new Image();
+  idleImg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png';
+  idleImg.onload = () => {
     requestAnimationFrame(gameLoop);
   };
 
+  const runImg = new Image();
+  runImg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Run/Slime1_Run_body.png';
+  runImg.onload = () => {
+    requestAnimationFrame(gameLoop);
+  }
+  let img = idleImg
   const animations = {
     frameWidth: 64,
     frameHeight: 64,
@@ -91,7 +97,7 @@ button.addEventListener('click', () => {
       if (player.Xv >= -29 && player.Xv <= 29 && player.running == false) {
         player.Xv = 0;
         if (animationStopper == false) {
-        img.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png';
+        img = idleImg
         player.action = "idle";
         animations.currentFrame = 0;
         animations.frameCount = 6;
@@ -147,7 +153,7 @@ button.addEventListener('click', () => {
     if (e.key === "ArrowRight" && player.onGround) {
       player.action = "run";
       if (player.running == false){
-      img.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Run/Slime1_Run_body.png'
+      img = runImg;
       animations.currentFrame = 0;
       animations.frameCount = 8;
       animations.frameRow = 3;
@@ -160,9 +166,9 @@ button.addEventListener('click', () => {
       }
     }
     if (e.key === "ArrowLeft" && player.onGround) {
-      player.action = "idle";
+      player.action = "run";
       if (player.running == false){
-      img.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Run/Slime1_Run_body.png'
+      img = runImg;
       animations.currentFrame = 0;
       animations.frameCount = 8;
       animations.frameRow = 2;
