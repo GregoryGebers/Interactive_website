@@ -2,9 +2,9 @@
 <html>
 <head><title>Control Your Character</title></head>
 <body>
-<canvas id="game" width="500" height="300" style="border:1px solid black;"></canvas>
+<canvas id="game" width="1000" height="500" style="border:1px solid black;"></canvas>
 <div id="loginOverlay" 
-       style="position:absolute; top:0; left:0; width:500px; height:300px;
+       style="position:absolute; top:0; left:1.1; width:1000px; height:500px;
               display:flex; align-items:center; justify-content:center;
               background:rgba(0,0,0,0.5); z-index:10;">
     <input id="usernameInput" type="text" placeholder="Enter username" 
@@ -17,7 +17,19 @@
   //"https://interactive-website-9620.onrender.com"
   const socket = io("https://interactive-website-9620.onrender.com");
 
- const idleImg = new Image();
+ const box_1_img = new Image();
+  box_1_img.src = '/assets/obstacles/box_1.png';
+  box_1_img.onload = () => {
+    requestAnimationFrame(gameLoop);
+  }
+
+  const trampoline_img = new Image();
+  trampoline_img.src = '/assets/obstacles/trampoline.png';
+  trampoline_img.onload = () => {
+    requestAnimationFrame(gameLoop);
+  }
+
+  const idleImg = new Image();
   idleImg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png';
   idleImg.onload = () => {
     requestAnimationFrame(gameLoop);
@@ -39,7 +51,29 @@
   const canvas = document.getElementById('game');
   canvas.setAttribute('tabindex', '0');
   canvas.focus();
+
+  const box1 = canvas.getContext('2d');
+  const trampoline = canvas.getContext('2d');
   const playObj = canvas.getContext('2d');
+
+  const boxes = [
+    {x: 70, y: 450, width: 20, height: 20},
+    {x: 90, y: 450, width: 20, height: 20},
+    {x: 190, y: 400, width: 20, height: 20},
+    {x: 210, y: 400, width: 20, height: 20},
+    {x: 0, y: 360, width: 20, height: 20},
+    {x: 400, y: 390, width: 20, height: 20},
+    {x: 400, y: 430, width: 20, height: 20},
+    {x: 420, y: 430, width: 20, height: 20},
+    {x: 400, y: 450, width: 20, height: 20},
+    {x: 400, y: 470, width: 20, height: 20},
+    {x: 550, y: 470, width: 20, height: 20},
+    {x: 940, y: 430, width: 20, height: 20},
+    {x: 960, y: 430, width: 20, height: 20},
+    {x: 980, y: 430, width: 20, height: 20},
+    {x: 940, y: 450, width: 20, height: 20},
+
+  ];
   const player = {
     x: 100,
     y: 100,
@@ -49,7 +83,7 @@
     Xv: 0,
     gravity: 500,
     onGround: false,
-    friction: 400,
+    friction: 1000,
     speedMax : 500,
     running : false,
     username: "",
@@ -93,6 +127,56 @@ button.addEventListener('click', () => {
       animations.currentFrame = (animations.currentFrame + 1) % animations.frameCount;
       frameTimer = 0;
     }
+
+    for (const box of boxes) {
+    const onTop = 
+    player.x + player.width > box.x &&
+    player.x < box.x + box.width &&
+    player.y + player.height <= box.y  &&
+    player.y + player.height + player.Yv * deltaTime >= box.y;
+
+    const LeftSide =
+    player.x + player.width >= box.x &&
+    player.x + player.width <= box.x + box.width &&
+    player.y + 4 <= box.y + box.height &&
+    player.y  + player.height -1 >= box.y;  
+
+
+    const RightSide = 
+    player.x  <= box.x + box.width &&
+    player.x  >= box.x  &&
+    player.y  + 4<= box.y + box.height &&
+    player.y  + player.height - 1 >= box.y; 
+
+    if (onTop) {
+      player.y = box.y - player.height;
+      player.Yv = 0;
+      player.onGround = true;
+      break;
+    } else if (!onTop) {
+      player.onGround = false;
+    }
+
+    if (LeftSide) {
+      player.Xv = -80;
+    }
+    if (RightSide) {
+      player.Xv = 80;
+    }
+  }
+
+  if(!player.onGround) {
+          player.Yv += player.gravity*deltaTime;
+
+          player.y += player.Yv *deltaTime;
+    }
+    if (player.y + player.height >= canvas.height) {
+        player.y = canvas.height - player.height;
+        player.Yv = 0;
+      player.onGround = true;
+    }
+
+
     if(player.onGround) {
       if (player.Xv >= -29 && player.Xv <= 29 && player.running == false) {
         player.Xv = 0;
@@ -114,22 +198,26 @@ button.addEventListener('click', () => {
       }
     }
     player.x += player.Xv*deltaTime;
-    if(!player.onGround) {
-          player.Yv += player.gravity*deltaTime;
 
-          player.y += player.Yv *deltaTime;
-    }
-    if (player.y + player.height >= canvas.height) {
-        player.y = canvas.height - player.height;
-        player.Yv = 0;
-      player.onGround = true;
+    if (player.x <= 0) {
+      player.x = 0;
+      player.Xv = 80;
+    } else if (player.x + player.width >= canvas.width) {
+      player.x = canvas.width - player.width;
+      player.Xv = -80;
     }
   }
 
 
-  function draw() {
+  function setObjects() {
     playObj.clearRect(0, 0, canvas.width, canvas.height);
-    
+    for (const box of boxes) {
+      playObj.drawImage(box_1_img, box.x-5, box.y-5, box.width +12, box.height +12);
+    }
+  }
+
+  function draw() {
+    setObjects();
     playObj.drawImage(
       img,
       animations.currentFrame * animations.frameWidth, 
