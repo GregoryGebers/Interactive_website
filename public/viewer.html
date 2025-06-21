@@ -1,205 +1,334 @@
 <!DOCTYPE html>
 <html>
 <head><title>Control Your Character</title></head>
-<body style="margin:0;overflow:hidden;">
-  <canvas id="game" width="1000" height="500" style="border:1px solid black;"></canvas>
-  <div id="loginOverlay" style="position:absolute;top:0;left:0;width:1000px;height:500px;
-      display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);z-index:10;">
-    <input id="usernameInput" type="text" placeholder="Enter username"
-           style="font-size:20px;padding:10px;width:60%;" />
-    <button id="usernameBtn" style="font-size:20px;margin-left:10px;">Go</button>
+<body>
+<canvas id="game" width="1000" height="500" style="border:1px solid black;"></canvas>
+<div id="loginOverlay" 
+       style="position:absolute; top:0; left:1.1; width:1000px; height:500px;
+              display:flex; align-items:center; justify-content:center;
+              background:rgba(0,0,0,0.5); z-index:10;">
+    <input id="usernameInput" type="text" placeholder="Enter username" 
+           style="font-size:20px; padding:10px; width:60%;" />
+    <button id="usernameBtn" style="font-size:20px; margin-left:10px;">Go</button>
   </div>
-  <script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
-  <script>
-    const socket = io("https://interactive-website-9620.onrender.com");
-    const canvas = document.getElementById('game');
-    const ctx = canvas.getContext('2d');
-    //ctx.imageSmoothingEnabled = false;
+<script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
+<script>
+  //"https://interactive-website-9620.onrender.com/socket.io/socket.io.js"
+  //"https://interactive-website-9620.onrender.com"
+  const socket = io("https://interactive-website-9620.onrender.com");
 
-    const box_1_img = new Image();
-    box_1_img.src = '/assets/obstacles/box_1.png';
-    const idleImg = new Image();
-    idleImg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png';
-    const runImg = new Image();
-    runImg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Run/Slime1_Run_body.png';
+ const box_1_img = new Image();
+  box_1_img.src = '/assets/obstacles/box_1.png';
+  box_1_img.onload = () => {
+    requestAnimationFrame(gameLoop);
+  }
 
-    const imgsPromise = Promise.all([
-      new Promise(r => box_1_img.onload = r),
-      new Promise(r => idleImg.onload = r),
-      new Promise(r => runImg.onload = r),
-    ]);
+  const trampoline_img = new Image();
+  trampoline_img.src = '/assets/obstacles/trampoline.png';
+  trampoline_img.onload = () => {
+    requestAnimationFrame(gameLoop);
+  }
 
-    const boxes = [
-      {x: 0, y: 400, width: 20, height: 20},
-      {x: 80, y: 450, width: 20, height: 20},
-      {x: 100, y: 450, width: 20, height: 20},
-      {x: 120, y: 450, width: 20, height: 20},
-      {x: 90, y: 350, width: 20, height: 20},
-      {x: 110, y: 350, width: 20, height: 20},
-      {x: 200, y: 400, width: 20, height: 20},
-      {x: 300, y: 480, width: 20, height: 20},
-      {x: 420, y: 420, width: 20, height: 20},
-      {x: 440, y: 420, width: 20, height: 20},
-      {x: 550, y: 380, width: 20, height: 20},
-      {x: 620, y: 340, width: 20, height: 20},
-      {x: 645, y: 360, width: 20, height: 20},
-      {x: 670, y: 340, width: 20, height: 20},
-      {x: 750, y: 380, width: 20, height: 20},
-      {x: 770, y: 380, width: 20, height: 20},
-      {x: 790, y: 380, width: 20, height: 20},
-      {x: 750, y: 440, width: 20, height: 20},
-      {x: 770, y: 440, width: 20, height: 20},
-      {x: 790, y: 440, width: 20, height: 20},
-      {x: 860, y: 400, width: 20, height: 20},
-      {x: 860, y: 380, width: 20, height: 20},
-      {x: 980, y: 380, width: 20, height: 20},
-    ];
+  const idleImg = new Image();
+  idleImg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png';
+  idleImg.onload = () => {
+    requestAnimationFrame(gameLoop);
+  };
 
-    const player = {
-      x: 200, y: 480, width: 20, height: 20,
-      Yv: 0, Yforce: 0, YforceMax: 0.5,
-      Xv: 0, gravity: 500, onGround: false,
-      friction: 1200, speedMax: 150,
-      running: false, jumping: false,
-      username: "", action: "idle"
-    };
+  const runImg = new Image();
+  runImg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Run/Slime1_Run_body.png';
+  runImg.onload = () => {
+    requestAnimationFrame(gameLoop);
+  }
+  let img = idleImg
+  const animations = {
+    frameWidth: 64,
+    frameHeight: 64,
+    frameCount: 6,
+    currentFrame: 0,
+    frameRow: 0
+  };
+  const canvas = document.getElementById('game');
+  canvas.setAttribute('tabindex', '0');
+  canvas.focus();
 
-    const anim = { fw: 64, fh: 64, count: 6, frame: 0, row: 0 };
-    let lastTs = 0, frameTimer = 0, moving = false;
+  const box1 = canvas.getContext('2d');
+  const trampoline = canvas.getContext('2d');
+  const playObj = canvas.getContext('2d');
 
-    document.getElementById('usernameBtn').onclick = () => {
-      const name = document.getElementById('usernameInput').value.trim() || 'Player1';
-      player.username = name;
-      socket.emit('new-Player', { id: socket.id, name });
-      document.getElementById('loginOverlay').style.display = 'none';
-      canvas.focus();
-    };
+  const boxes = [
+    {x: 0, y: 400, width: 20, height: 20},
+    {x: 80, y: 450, width: 20, height: 20},
+    {x: 100, y: 450, width: 20, height: 20},
+    {x: 120, y: 450, width: 20, height: 20},
+    {x: 90, y: 350, width: 20, height: 20},
+    {x: 110, y: 350, width: 20, height: 20},
+    {x: 200, y: 400, width: 20, height: 20},
+    {x: 300, y: 480, width: 20, height: 20},
+    {x: 420, y: 420, width: 20, height: 20},
+    {x: 440, y: 420, width: 20, height: 20},
+    {x: 550, y: 380, width: 20, height: 20},
+    {x: 620, y: 340, width: 20, height: 20},
+    {x: 645, y: 360, width: 20, height: 20},
+    {x: 670, y: 340, width: 20, height: 20},
+    {x: 750, y: 380, width: 20, height: 20},
+    {x: 770, y: 380, width: 20, height: 20},
+    {x: 790, y: 380, width: 20, height: 20},
+    {x: 750, y: 440, width: 20, height: 20},
+    {x: 770, y: 440, width: 20, height: 20},
+    {x: 790, y: 440, width: 20, height: 20},
 
-    function handleCollision(dt) {
-      let acted = false;
-      for (const b of boxes) {
-        const px = player.x, py = player.y, pw = player.width, ph = player.height;
-        const { x: bx, y: by, width: bw, height: bh } = b;
 
-        if (px + pw > bx && px < bx + bw &&
-            py + ph <= by && py + ph + player.Yv * dt >= by) {
-          player.y = by - ph; player.Yv = 0; player.onGround = true; acted = true;
-        }
-        else if (px + pw <= bx && px + pw + player.Xv * dt >= bx &&
-                 py + ph > by && py < by + bh) {
-          player.x = bx - pw; player.Xv = 0; acted = true;
-        }
-        else if (px >= bx + bw && px + player.Xv * dt <= bx + bw &&
-                 py + ph > by && py < by + bh) {
-          player.x = bx + bw; player.Xv = 0; acted = true;
-        }
-        else if (px + pw > bx && px < bx + bw &&
-                 py >= by + bh && py + player.Yv * dt <= by + bh) {
-          player.Yv = 10; acted = true;
-        }
-        if (acted) break;
-      }
+    {x: 860, y: 400, width: 20, height: 20},
+    {x: 860, y: 380, width: 20, height: 20},
+    
+    {x: 980, y: 380, width: 20, height: 20},
+
+  ];
+  const player = {
+    x: 200,
+    y: 480,
+    width: 20,
+    height: 20,
+    Yv: 0,
+    Yforce: 0,
+    YforceMax: 0.5,
+    Xv: 0,
+    gravity: 500,
+    onGround: false,
+    friction: 1200,
+    speedMax : 150,
+    running : false,
+    jumping: false,
+    username: "",
+    action: "idle"
+  };
+  let lastTime = performance.now();
+  usernameprompt();
+  function usernameprompt(){
+    const overlay = document.getElementById('loginOverlay');
+    const input = document.getElementById('usernameInput');
+    const button = document.getElementById('usernameBtn');
+
+    button.addEventListener('click', () => {
+    const name = input.value.trim() || 'Player1';
+    player.username = name;
+    socket.emit('new-Player', { id: socket.id, name });
+    overlay.style.display = 'none';
+    canvas.focus();  // Return focus to canvas for key events
+});
+  }
+
+
+  function gameLoop(currentTime) {
+    const deltaTime = (currentTime - lastTime)/1000;
+    lastTime = currentTime;
+
+    update(deltaTime);
+    draw();
+
+    requestAnimationFrame(gameLoop);
+  }
+
+  let frameTimer = 0;
+  let animationStopper = false;
+  const frameInterval = 0.1;
+  function update(deltaTime) {
+
+    frameTimer += deltaTime;
+    if (frameTimer >= frameInterval) {
+      animations.currentFrame = (animations.currentFrame + 1) % animations.frameCount;
+      frameTimer = 0;
     }
 
-    function update(dt) {
-      frameTimer += dt;
-      if (frameTimer >= 0.1) {
-        anim.frame = (anim.frame + 1) % anim.count;
-        frameTimer = 0;
-      }
-      player.onGround = false;
-      player.Yv += player.gravity * dt;
-      player.y += player.Yv * dt;
-      handleCollision(dt);
+    for (const box of boxes) {
 
-      if (player.y + player.height >= canvas.height) {
+    const onBottom = 
+    player.y - player.height <= box.y - 1 && 
+    player.x + player.width > box.x &&
+    player.x < box.x + box.width &&
+    player.y > box.y;
+
+    const onTop = 
+    player.x + player.width > box.x &&
+    player.x < box.x + box.width &&
+    player.y + player.height <= box.y  &&
+    player.y + player.height + player.Yv * deltaTime >= box.y;
+
+    const LeftSide =
+    player.x + player.width >= box.x &&
+    player.x + player.width <= box.x + box.width &&
+    player.y + 4 <= box.y + box.height &&
+    player.y  + player.height -1 >= box.y;  
+
+
+    const RightSide = 
+    player.x  <= box.x + box.width &&
+    player.x  >= box.x  &&
+    player.y  + 4 <= box.y + box.height &&
+    player.y  + player.height - 1 >= box.y; 
+
+    if (onTop) {
+      player.y = box.y - player.height;
+      player.Yv = 0;
+      player.onGround = true;
+      break;
+    } else if (!onTop) {
+      player.onGround = false;
+    }
+
+    if(onBottom) {
+      player.Yv = 10;
+    }
+
+    if (LeftSide) {
+      player.Xv = -80;
+    }
+    if (RightSide) {
+      player.Xv = 80;
+    }
+
+  }
+
+
+  if(!player.onGround) {
+          player.Yv += player.gravity*deltaTime;
+
+          player.y += player.Yv *deltaTime;
+    }
+    if (player.y + player.height >= canvas.height) {
         player.y = canvas.height - player.height;
         player.Yv = 0;
-        player.onGround = true;
+      player.onGround = true;
+    }
+
+
+    if(player.onGround) {
+      if(player.jumping) {
+        player.Yforce += deltaTime;
       }
-
-      player.x = Math.max(0, Math.min(player.x + player.Xv * dt, canvas.width - player.width));
-
-      if (player.onGround && !moving && Math.abs(player.Xv) < 30) {
+      if (player.Xv >= -29 && player.Xv <= 29 && player.running == false) {
         player.Xv = 0;
-      } else if (!moving && player.Xv !== 0) {
-        player.Xv += (player.Xv > 0 ? -player.friction : player.friction) * dt;
-      }
-    }
-
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      for (const b of boxes) {
-        ctx.drawImage(box_1_img, b.x, b.y, b.width, b.height);
-      }
-      const sprite = player.action === 'run' ? runImg : idleImg;
-      ctx.drawImage(sprite,
-        anim.frame * anim.fw, anim.row * anim.fh, anim.fw, anim.fh,
-        player.x - 20, player.y - 20, anim.fw, anim.fh
-      );
-      ctx.font = '16px Arial';
-      ctx.fillStyle = 'blue';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText(player.username, player.x + player.width / 2, player.y - 5);
-
-      socket.emit('move', {
-        x: player.x,
-        y: player.y,
-        frameCount: anim.count,
-        frameIndex: anim.frame,
-        frameRow: anim.row,
-        username: player.username,
-        emote: player.action
-      });
-    }
-
-    canvas.addEventListener('keydown', e => {
-      if (['ArrowLeft', 'ArrowRight', 'ArrowUp'].includes(e.key)) moving = true;
-      if (e.key === 'ArrowUp' && player.onGround) {
-        player.Yv = -200;
-        player.jumping = true;
-      }
-      if (e.key === 'ArrowRight' && player.onGround) {
-        player.action = 'run';
-        anim.count = 8;
-        anim.row = 3;
-        player.Xv = player.speedMax;
-      }
-      if (e.key === 'ArrowLeft' && player.onGround) {
-        player.action = 'run';
-        anim.count = 8;
-        anim.row = 2;
-        player.Xv = -player.speedMax;
-      }
-    });
-
-    canvas.addEventListener('keyup', e => {
-      if (['ArrowLeft', 'ArrowRight', 'ArrowUp'].includes(e.key)) moving = false;
-      if (e.key === 'ArrowUp') player.jumping = false;
-      if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
-        player.action = 'idle';
-        anim.frame = 0;
-        anim.count = 6;
-        anim.row = 0;
-      }
-    });
-
-    imgsPromise.then(() => {
-      lastTs = performance.now();
-      canvas.focus();
-      requestAnimationFrame(now => {
-        lastTs = now;
-        function loop(ts) {
-          const dt = (ts - lastTs) / 1000;
-          lastTs = ts;
-          update(dt);
-          draw();
-          requestAnimationFrame(loop);
+        if (animationStopper == false) {
+        img = idleImg
+        player.action = "idle";
+        animations.currentFrame = 0;
+        animations.frameCount = 6;
+        animations.frameRow = 0;
+        animationStopper = true;
         }
-        loop(lastTs);
-      });
-    });
-  </script>
+      }
+      if(player.running == false && player.Xv > 0) {
+        player.Xv -= player.friction*deltaTime;
+
+        
+      } else if (player.running == false && player.Xv < 0){
+        player.Xv += player.friction*deltaTime;
+      }
+    }
+    player.x += player.Xv*deltaTime;
+
+    if (player.x <= 0) {
+      player.x = 0;
+      player.Xv = 80;
+    } else if (player.x + player.width >= canvas.width) {
+      player.x = canvas.width - player.width;
+      player.Xv = -80;
+    }
+  }
+
+
+  function setObjects() {
+    playObj.clearRect(0, 0, canvas.width, canvas.height);
+    for (const box of boxes) {
+      playObj.drawImage(box_1_img, box.x-5, box.y-5, box.width +12, box.height +12);
+    }
+  }
+
+  function draw() {
+    setObjects();
+    playObj.drawImage(
+      img,
+      animations.currentFrame * animations.frameWidth, 
+      animations.frameRow * animations.frameHeight,
+      animations.frameWidth, animations.frameHeight,
+      player.x- 20, player.y - 20,
+      animations.frameWidth, animations.frameHeight
+    );
+    
+    playObj.font = '16px Arial';
+    playObj.fillStyle = 'blue';
+    playObj.textAlign = 'center';
+    playObj.textBaseline = 'bottom';
+
+    playObj.fillText(player.username, player.x + player.width/2, player.y - 5);
+    socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action });
+    
+  }
+  
+  canvas.addEventListener('keydown', e => {
+    if (e.key === "ArrowRight" && player.onGround) {
+      player.action = "run";
+      if (player.running == false){
+      img = runImg;
+      animations.currentFrame = 0;
+      animations.frameCount = 8;
+      animations.frameRow = 3;
+      animationStopper = false;
+      }
+      player.running = true;
+      player.Xv = player.speedMax;
+      
+    }
+    if (e.key === "ArrowLeft" && player.onGround) {
+      player.action = "run";
+      if (player.running == false){
+      img = runImg;
+      animations.currentFrame = 0;
+      animations.frameCount = 8;
+      animations.frameRow = 2;
+      animationStopper = false;
+      }
+      player.running = true;
+      
+      player.Xv = -1* player.speedMax;
+    }
+    if (e.key === "ArrowUp")  {
+      if(player.onGround == true) {
+        player.jumping = true;
+        requestAnimationFrame(gameLoop);
+      }
+    }
+
+    socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action });
+    draw();
+    //equestAnimationFrame(gameLoop);
+  });
+
+  canvas.addEventListener('keyup', e => {
+    if (e.key === "ArrowRight") {
+      player.running = false;
+    }
+    if (e.key === "ArrowLeft") {
+      player.running = false;
+    }
+
+    if (e.key === "ArrowUp") {
+      if (player.onGround){
+        player.jumping = false;
+        player.onGround = false;
+        if (player.Yforce > player.YforceMax) {
+          player.Yforce = player.YforceMax;
+        }
+        player.Yv -= player.Yforce*180 + 200;
+        player.Yforce = 0;
+      }
+    }
+
+    socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action });
+    draw();
+  });
+  requestAnimationFrame(gameLoop);
+</script>
 </body>
 </html>
