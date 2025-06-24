@@ -40,6 +40,13 @@
   runImg.onload = () => {
     requestAnimationFrame(gameLoop);
   }
+
+  const coinImg = new Image();
+  coinImg.src = '/assets/obstacles/coin.png';
+  coinImg.onload = () => {
+    requestAnimationFrame(gameLoop);
+  }
+
   let img = idleImg
   const animations = {
     frameWidth: 64,
@@ -86,7 +93,7 @@
 
   ];
   const player = {
-    x: 200,
+    x: 100,
     y: 480,
     width: 20,
     height: 20,
@@ -101,7 +108,8 @@
     running : false,
     jumping: false,
     username: "",
-    action: "idle"
+    action: "idle",
+    score: 0
   };
   let lastTime = performance.now();
   usernameprompt();
@@ -113,7 +121,9 @@
     button.addEventListener('click', () => {
     const name = input.value.trim() || 'Player1';
     player.username = name;
-    socket.emit('new-Player', { id: socket.id, name });
+    socket.on('connect', () => {
+      socket.emit('new-player', { id: socket.id, name });
+    });
     overlay.style.display = 'none';
     canvas.focus();  // Return focus to canvas for key events
 });
@@ -130,9 +140,16 @@
     requestAnimationFrame(gameLoop);
   }
 
+
+
   let frameTimer = 0;
   let animationStopper = false;
   const frameInterval = 0.1;
+  let coin = null;
+  socket.on("coin", data => {
+    coin = data;
+    console.log("Coin received:", data.x, data.y);
+  });
   function update(deltaTime) {
 
     frameTimer += deltaTime;
@@ -140,6 +157,8 @@
       animations.currentFrame = (animations.currentFrame + 1) % animations.frameCount;
       frameTimer = 0;
     }
+
+
 
     for (const box of boxes) {
 
@@ -191,6 +210,20 @@
   }
 
 
+  if (coin != null) {
+    let coin_touching = 
+    player.x < coin.x + 10 &&
+    player.x + player.width > coin.x &&
+    player.y < coin.y + 10 &&
+    player.y + player.height > coin.y
+  
+    if (coin_touching) {
+      console.log("recieved a coin");
+      coin = null;
+      player.score++;
+      socket.emit("coin_taken");
+    }
+  }
   if(!player.onGround) {
           player.Yv += player.gravity*deltaTime;
 
@@ -243,6 +276,9 @@
     for (const box of boxes) {
       playObj.drawImage(box_1_img, box.x-5, box.y-5, box.width +12, box.height +12);
     }
+      if (coin != null) {
+        playObj.drawImage(coinImg, coin.x, coin.y, 20, 20);
+      }
   }
 
   function draw() {
@@ -262,7 +298,8 @@
     playObj.textBaseline = 'bottom';
 
     playObj.fillText(player.username, player.x + player.width/2, player.y - 5);
-    socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action });
+    playObj.fillText("Current score: " + player.score, 0, 490);
+    socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action, score :player.score });
     
   }
   
@@ -296,13 +333,11 @@
     if (e.key === "ArrowUp")  {
       if(player.onGround == true) {
         player.jumping = true;
-        //requestAnimationFrame(gameLoop);
       }
     }
 
-    //socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action });
-    //draw();
-    //equestAnimationFrame(gameLoop);
+    socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action });
+    draw();
   });
 
   canvas.addEventListener('keyup', e => {
@@ -325,8 +360,8 @@
       }
     }
 
-    //socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action });
-    //draw();
+    socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action });
+    draw();
   });
   requestAnimationFrame(gameLoop);
 </script>
