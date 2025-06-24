@@ -25,21 +25,38 @@ app.get('/', (req, res) => {
 // Object to track connected players
 let players = {};
 
-// Handle Socket.IO connections
 io.on('connection', (socket) => {
-  console.log(`New client connected: ${socket.id}`);
+  const coins = [
+      { x: 500, y: 480},
+      { x: 0, y: 380},
+      { x: 100, y:330},
+      { x: 100, y:430},
+      { x: 300, y:460},
+      { x: 300, y:330},
+      { x: 550, y:360},
+      { x: 500, y:480},
+      { x: 645, y:340},
+      { x: 815, y:380},
+      { x: 980, y:360},
+      
+    ];
+  let index = Math.floor(Math.random() * (11- 1 + 1));
+  io.emit("coin", coins[index]);
 
-  // Initialize new player
-  players[socket.id] = { x: 100, y: 100, emote: 'idle' };
+  players[socket.id] = { x: 100, y: 100, emote: "idle", score: 0 };
+  socket.emit("init", players);
+  socket.broadcast.emit("new-player", { id: socket.id, ...players[socket.id] });
 
-  // Send current players to the new client
-  socket.emit('init', players);
+  socket.on("coin_taken", (data) => {
+    socket.broadcast.emit("coin_taken");
+    setTimeout(() => {
+    let index = Math.floor(Math.random() * (11- 1 + 1));
+    io.emit("coin", coins[index]);
+    }, 3000);
+  })
 
-  // Notify others about the new player
-  socket.broadcast.emit('new-player', { id: socket.id, ...players[socket.id] });
-
-  // Handle player movement
-   socket.on("move", (data) => {
+//socket.emit("move", { x: player.x , y: player.y , image: img, frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: "idle" });
+  socket.on("move", (data) => {
     players[socket.id] = { 
       x: data.x,
       y: data.y,
@@ -47,17 +64,19 @@ io.on('connection', (socket) => {
       frameIndex: data.frameIndex,
       frameRow: data.frameRow,
       username: data.username,
-      emote: data.emote
+      emote: data.emote,
+      score: data.score
 
     };
     socket.broadcast.emit("player-move", { id: socket.id, ...players[socket.id] });
   });
 
-  // Handle client disconnection
-  socket.on('disconnect', () => {
-    console.log(`Client disconnected: ${socket.id}`);
+
+
+
+  socket.on("disconnect", () => {
     delete players[socket.id];
-    io.emit('remove-player', socket.id);
+    io.emit("remove-player", socket.id);
   });
 });
 
