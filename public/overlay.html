@@ -28,12 +28,27 @@
   boximg.src = '/assets/obstacles/box_1.png';
   boximg.onload = () => requestAnimationFrame(draw);
 
+  const coinImg = new Image();
+  coinImg.src = '/assets/obstacles/coin.png';
+  coinImg.onload = () => {
+    requestAnimationFrame(draw);
+  }
 
-  
+
+  let coin = null;
+  socket.on("coin", data => {
+    coin = data;
+    console.log("Coin received:", data.x, data.y);
+  });
+
+  socket.on("coin_taken", (data) => {
+    coin = null;
+    console.log("coin taken:");
+  });
   
 
   const boxes = [
-     {x: 0, y: 400, width: 20, height: 20},
+    {x: 0, y: 400, width: 20, height: 20},
     {x: 80, y: 450, width: 20, height: 20},
     {x: 100, y: 450, width: 20, height: 20},
     {x: 120, y: 450, width: 20, height: 20},
@@ -62,12 +77,19 @@
 
   ];
     
+
+
   function draw() {
     
     setObjects();
+    let high_score = -1;
+    let high_user = "";
     for (const id in players) {
       const p = players[id];
-
+      if (p.score >= high_score) {
+        high_score = p.score;
+        high_user = p.username;
+      }
       const fw = 64, fh = 64;
       let img = idleimg;
       if (p.emote == "run") {
@@ -92,6 +114,8 @@
     ctx.fillText(p.username, p.x + 10, p.y - 5);
     }
     requestAnimationFrame(draw);
+    ctx.fillStyle = 'black';
+    ctx.fillText("High Score: " + high_user + " -- " + high_score, 480, 520);
   }
 
   function setObjects() {
@@ -99,6 +123,9 @@
     for (const box of boxes) {
       ctx.drawImage(boximg, box.x-5, box.y-5, box.width +12, box.height +12);
     }
+    if (coin != null) {
+        ctx.drawImage(coinImg, coin.x, coin.y, 20, 20);
+      }
   }
 
   draw();
