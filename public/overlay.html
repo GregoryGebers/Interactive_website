@@ -114,7 +114,9 @@
     ctx.fillText(p.username, p.x + 10, p.y - 5);
     }
     requestAnimationFrame(draw);
-    ctx.fillStyle = 'blue';
+    ctx.font = '30px Arial';
+    ctx.fillStyle = 'white';
+    ctx.strokeStyle = 'black'
     ctx.fillText("High Score: " + high_user + " -- " + high_score, 480, 520);
   }
 
