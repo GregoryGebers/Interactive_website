@@ -45,13 +45,17 @@
   </style>
 </head>
 <body>
-<canvas id="game" width="1000" height="500" style="border:1px solid black;"></canvas>
-<div id="loginOverlay" 
-       style="position:absolute; top:0; left:1.1; width:1000px; height:500px;
-              display:flex; align-items:center; justify-content:center;
-              background:rgba(0,0,0,0.5); z-index:10;">
-    <input id="usernameInput" type="text" placeholder="Enter username" 
-           style="font-size:20px; padding:10px; width:60%;" />
+<iframe
+    id="twitchBg"
+    src="https://player.twitch.tv/?channel=eberhex&parent=YOURDOMAIN.com&muted=true"
+    allowfullscreen="true"
+    frameborder="0">
+  </iframe>
+
+  <canvas id="game" tabindex="0"></canvas>
+
+  <div id="loginOverlay" style="display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.5);">
+    <input id="usernameInput" type="text" placeholder="Enter username" style="font-size:20px; padding:10px; width:60%;" />
     <button id="usernameBtn" style="font-size:20px; margin-left:10px;">Go</button>
   </div>
 <script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
@@ -429,5 +433,6 @@ resizeCanvas();
 </iframe>
 </body>
 </html>
+
 
 
