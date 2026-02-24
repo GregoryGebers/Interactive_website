@@ -89,6 +89,10 @@
   <script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
 
   <script>
+    console.log("GAME SCRIPT STARTED");
+window.onerror = (msg, src, line, col, err) => {
+  console.log("JS ERROR:", msg, "at", src, line + ":" + col, err);
+};
     const socket = io("https://interactive-website-9620.onrender.com");
 
     // Fixed playable world
@@ -348,6 +352,13 @@
     }
 
     function draw() {
+      ctx.setTransform(1,0,0,1,0,0);
+ctx.clearRect(0,0,canvas.width,canvas.height);
+ctx.fillStyle = "rgba(0,255,255,0.3)";
+ctx.fillRect(0,0,1000,500);
+ctx.fillStyle = "yellow";
+ctx.font = "24px Arial";
+ctx.fillText("DRAW LOOP RUNNING", 10, 30);
       clearWorld();
       applyViewportTransform();
 
@@ -463,6 +474,7 @@
   </script>
 </body>
 </html>
+
 
 
 
