@@ -15,7 +15,6 @@
       background: #000;
     }
 
-    /* Twitch stream behind everything */
     #twitchBg {
       position: fixed;
       inset: 0;
@@ -23,10 +22,9 @@
       height: 100vh;
       border: 0;
       z-index: 0;
-      pointer-events: none; /* important: game receives clicks/keys */
+      pointer-events: none;
     }
 
-    /* Fullscreen canvas visually, but internal world stays 1000x500 */
     #game {
       position: fixed;
       inset: 0;
@@ -35,11 +33,10 @@
       border: none;
       outline: none;
       z-index: 2;
-      image-rendering: pixelated; /* nice for pixel art */
+      image-rendering: pixelated;
       display: block;
     }
 
-    /* Fullscreen login overlay */
     #loginOverlay {
       position: fixed;
       inset: 0;
@@ -68,7 +65,6 @@
       cursor: pointer;
     }
 
-    /* Optional fullscreen button */
     #fsBtn {
       position: fixed;
       right: 12px;
@@ -83,10 +79,6 @@
 </head>
 
 <body>
-  <!-- IMPORTANT: Replace parent= with your actual domain.
-       For Render: parent=interactive-website-9620.onrender.com
-       For local testing: parent=localhost
-  -->
   <iframe
     id="twitchBg"
     src="https://player.twitch.tv/?channel=eberhex&parent=interactive-website-9620.onrender.com&muted=true"
@@ -96,7 +88,6 @@
 
   <button id="fsBtn" type="button">Fullscreen</button>
 
-  <!-- Keep playable area fixed at 1000x500 -->
   <canvas id="game" width="1000" height="500" tabindex="0"></canvas>
 
   <div id="loginOverlay">
@@ -109,33 +100,45 @@
   <script>
     const socket = io("https://interactive-website-9620.onrender.com");
 
-    // ===== Fixed "world" size (do not change playable area) =====
+    // Fixed playable area
     const WORLD_W = 1000;
     const WORLD_H = 500;
 
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d', { alpha: true });
 
-    // Ensure internal resolution matches the playable area
     canvas.width = WORLD_W;
     canvas.height = WORLD_H;
-
     canvas.focus();
 
-    // ===== Assets =====
+    // Asset loading flags (so we don’t draw before images exist)
+    const loaded = {
+      box: false,
+      trampoline: false,
+      idle: false,
+      run: false,
+      coin: false
+    };
+
+    // Assets
     const box_1_img = new Image();
+    box_1_img.onload = () => loaded.box = true;
     box_1_img.src = '/assets/obstacles/box_1.png';
 
     const trampoline_img = new Image();
+    trampoline_img.onload = () => loaded.trampoline = true;
     trampoline_img.src = '/assets/obstacles/trampoline.png';
 
     const idleImg = new Image();
+    idleImg.onload = () => loaded.idle = true;
     idleImg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png';
 
     const runImg = new Image();
+    runImg.onload = () => loaded.run = true;
     runImg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Run/Slime1_Run_body.png';
 
     const coinImg = new Image();
+    coinImg.onload = () => loaded.coin = true;
     coinImg.src = '/assets/obstacles/coin.png';
 
     let img = idleImg;
@@ -148,7 +151,6 @@
       frameRow: 0
     };
 
-    // ===== World Objects =====
     const boxes = [
       {x: 0, y: 400, width: 20, height: 20},
       {x: 80, y: 450, width: 20, height: 20},
@@ -203,35 +205,26 @@
     let coin = null;
     socket.on("coin", data => {
       coin = data;
-      console.log("Coin received:", data.x, data.y);
     });
 
-    // ===== Viewport scaling (fullscreen display, fixed world) =====
     function applyViewportTransform() {
-      // Fit the entire 1000x500 world into the screen, letterbox if needed
       const scale = Math.min(window.innerWidth / WORLD_W, window.innerHeight / WORLD_H);
       const offsetX = (window.innerWidth - WORLD_W * scale) / 2;
       const offsetY = (window.innerHeight - WORLD_H * scale) / 2;
-
-      // Draw world coordinates scaled into screen coordinates
       ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
-      return { scale, offsetX, offsetY };
     }
 
     function clearScreen() {
-      // Clear in screen space (identity transform)
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height); // clear canvas reliably
+      // Also clear the visual area (safe, even though canvas clips)
       ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
     }
 
-    window.addEventListener('resize', () => {
-      // No world change, just redraw with new scale
-      draw();
-    });
+    window.addEventListener('resize', () => draw());
 
-    // ===== Login overlay =====
-    usernameprompt();
-    function usernameprompt() {
+    // Login overlay
+    (function usernameprompt() {
       const overlay = document.getElementById('loginOverlay');
       const input = document.getElementById('usernameInput');
       const button = document.getElementById('usernameBtn');
@@ -247,9 +240,8 @@
         overlay.style.display = 'none';
         canvas.focus();
       });
-    }
+    })();
 
-    // ===== Game Loop =====
     function gameLoop(currentTime) {
       const deltaTime = (currentTime - lastTime) / 1000;
       lastTime = currentTime;
@@ -261,14 +253,12 @@
     }
 
     function update(deltaTime) {
-      // Animation frames
       frameTimer += deltaTime;
       if (frameTimer >= frameInterval) {
         animations.currentFrame = (animations.currentFrame + 1) % animations.frameCount;
         frameTimer = 0;
       }
 
-      // Collisions
       for (const box of boxes) {
         const onBottom =
           player.y - player.height <= box.y - 1 &&
@@ -303,19 +293,11 @@
           player.onGround = false;
         }
 
-        if (onBottom) {
-          player.Yv = 10;
-        }
-
-        if (LeftSide) {
-          player.Xv = -80;
-        }
-        if (RightSide) {
-          player.Xv = 80;
-        }
+        if (onBottom) player.Yv = 10;
+        if (LeftSide) player.Xv = -80;
+        if (RightSide) player.Xv = 80;
       }
 
-      // Coin
       if (coin != null) {
         const coin_touching =
           player.x < coin.x + 10 &&
@@ -324,14 +306,12 @@
           player.y + player.height > coin.y;
 
         if (coin_touching) {
-          console.log("received a coin");
           coin = null;
           player.score++;
           socket.emit("coin_taken");
         }
       }
 
-      // Gravity and floor
       if (!player.onGround) {
         player.Yv += player.gravity * deltaTime;
         player.y += player.Yv * deltaTime;
@@ -343,11 +323,8 @@
         player.onGround = true;
       }
 
-      // Friction / idle
       if (player.onGround) {
-        if (player.jumping) {
-          player.Yforce += deltaTime;
-        }
+        if (player.jumping) player.Yforce += deltaTime;
 
         if (player.Xv >= -29 && player.Xv <= 29 && player.running === false) {
           player.Xv = 0;
@@ -361,14 +338,10 @@
           }
         }
 
-        if (player.running === false && player.Xv > 0) {
-          player.Xv -= player.friction * deltaTime;
-        } else if (player.running === false && player.Xv < 0) {
-          player.Xv += player.friction * deltaTime;
-        }
+        if (player.running === false && player.Xv > 0) player.Xv -= player.friction * deltaTime;
+        else if (player.running === false && player.Xv < 0) player.Xv += player.friction * deltaTime;
       }
 
-      // Horizontal movement
       player.x += player.Xv * deltaTime;
 
       if (player.x <= 0) {
@@ -381,11 +354,22 @@
     }
 
     function setObjects() {
-      for (const box of boxes) {
-        ctx.drawImage(box_1_img, box.x - 5, box.y - 5, box.width + 12, box.height + 12);
+      if (loaded.box) {
+        for (const box of boxes) {
+          ctx.drawImage(box_1_img, box.x - 5, box.y - 5, box.width + 12, box.height + 12);
+        }
+      } else {
+        // fallback boxes while image loads
+        ctx.fillStyle = "rgba(255,255,255,0.25)";
+        for (const box of boxes) ctx.fillRect(box.x, box.y, box.width, box.height);
       }
+
       if (coin != null) {
-        ctx.drawImage(coinImg, coin.x, coin.y, 20, 20);
+        if (loaded.coin) ctx.drawImage(coinImg, coin.x, coin.y, 20, 20);
+        else {
+          ctx.fillStyle = "gold";
+          ctx.fillRect(coin.x, coin.y, 20, 20);
+        }
       }
     }
 
@@ -393,28 +377,35 @@
       clearScreen();
       applyViewportTransform();
 
-      // Draw world
+      // simple background so you can always see something
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+
       setObjects();
 
-      // Player sprite
-      ctx.drawImage(
-        img,
-        animations.currentFrame * animations.frameWidth,
-        animations.frameRow * animations.frameHeight,
-        animations.frameWidth, animations.frameHeight,
-        player.x - 20, player.y - 20,
-        animations.frameWidth, animations.frameHeight
-      );
+      // Player
+      if (loaded.idle) {
+        ctx.drawImage(
+          img,
+          animations.currentFrame * animations.frameWidth,
+          animations.frameRow * animations.frameHeight,
+          animations.frameWidth, animations.frameHeight,
+          player.x - 20, player.y - 20,
+          animations.frameWidth, animations.frameHeight
+        );
+      } else {
+        // fallback player while sprite loads
+        ctx.fillStyle = "lime";
+        ctx.fillRect(player.x, player.y, player.width, player.height);
+      }
 
-      // Text (world space)
+      // Text
       ctx.font = '16px Arial';
-      ctx.fillStyle = 'blue';
+      ctx.fillStyle = 'deepskyblue';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
+      ctx.fillText(player.username || "Player", player.x + player.width / 2, player.y - 5);
 
-      ctx.fillText(player.username, player.x + player.width / 2, player.y - 5);
-
-      // Score, anchored inside world
       ctx.textAlign = 'left';
       ctx.fillText("Current score: " + player.score, 10, WORLD_H - 10);
 
@@ -430,7 +421,7 @@
       });
     }
 
-    // ===== Input =====
+    // Input
     canvas.addEventListener('keydown', e => {
       if (e.key === "ArrowRight" && player.onGround) {
         player.action = "run";
@@ -459,59 +450,29 @@
       }
 
       if (e.key === "ArrowUp") {
-        if (player.onGround === true) {
-          player.jumping = true;
-        }
+        if (player.onGround === true) player.jumping = true;
       }
-
-      socket.emit("move", {
-        x: player.x,
-        y: player.y,
-        frameCount: animations.frameCount,
-        frameIndex: animations.currentFrame,
-        frameRow: animations.frameRow,
-        username: player.username,
-        emote: player.action,
-        score: player.score
-      });
     });
 
     canvas.addEventListener('keyup', e => {
-      if (e.key === "ArrowRight") {
-        player.running = false;
-      }
-      if (e.key === "ArrowLeft") {
-        player.running = false;
-      }
+      if (e.key === "ArrowRight") player.running = false;
+      if (e.key === "ArrowLeft") player.running = false;
 
       if (e.key === "ArrowUp") {
         if (player.onGround) {
           player.jumping = false;
           player.onGround = false;
-          if (player.Yforce > player.YforceMax) {
-            player.Yforce = player.YforceMax;
-          }
+          if (player.Yforce > player.YforceMax) player.Yforce = player.YforceMax;
           player.Yv -= player.Yforce * 180 + 200;
           player.Yforce = 0;
         }
       }
-
-      socket.emit("move", {
-        x: player.x,
-        y: player.y,
-        frameCount: animations.frameCount,
-        frameIndex: animations.currentFrame,
-        frameRow: animations.frameRow,
-        username: player.username,
-        emote: player.action,
-        score: player.score
-      });
     });
 
-    // Keep focus on canvas for key events
+    // Keep focus on canvas
     window.addEventListener('click', () => canvas.focus());
 
-    // Fullscreen button (user interaction required by browsers)
+    // Fullscreen button
     document.getElementById('fsBtn').addEventListener('click', async () => {
       try {
         await document.documentElement.requestFullscreen();
@@ -521,7 +482,7 @@
       }
     });
 
-    // Start loop once at least one critical image is ready
+    // Start loop immediately (no dependency on image onload)
     requestAnimationFrame(gameLoop);
   </script>
 </body>
