@@ -1,6 +1,49 @@
 <!DOCTYPE html>
 <html>
-<head><title>Control Your Character</title></head>
+<head><title>Control Your Character</title>
+       <title>Control Your Character</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+
+    /* Twitch video background */
+    #twitchBg {
+      position: fixed;
+      inset: 0;              /* top:0 right:0 bottom:0 left:0 */
+      width: 100vw;
+      height: 100vh;
+      border: 0;
+      z-index: 0;
+      pointer-events: none;  /* so clicks/keys go to your game */
+    }
+
+    /* Fullscreen game canvas on top */
+    #game {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 2;
+      border: none;          /* remove the black border */
+      outline: none;
+    }
+
+    /* Overlay should cover whole screen */
+    #loginOverlay {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 3;
+    }
+  </style>
+</head>
 <body>
 <canvas id="game" width="1000" height="500" style="border:1px solid black;"></canvas>
 <div id="loginOverlay" 
@@ -56,6 +99,19 @@
     frameRow: 0
   };
   const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d'); // you can use one context instead of 3
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.width = window.innerWidth + "px";
+  canvas.style.height = window.innerHeight + "px";
+  canvas.width = Math.floor(window.innerWidth * dpr);
+  canvas.height = Math.floor(window.innerHeight * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // draw using CSS pixels
+}
+
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
   canvas.setAttribute('tabindex', '0');
   canvas.focus();
 
@@ -365,7 +421,13 @@
   });
   requestAnimationFrame(gameLoop);
 </script>
-<iframe src="https://www.twitch.tv/eberhex" height= "300px" width="300px"></iframe>
+<iframe
+  id="twitchBg"
+  src="https://player.twitch.tv/?channel=eberhex&parent=YOURDOMAIN.com&muted=true"
+  allowfullscreen="true"
+  frameborder="0">
+</iframe>
 </body>
 </html>
+
 
