@@ -1,146 +1,87 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Control Your Character</title>
-
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #000;
-    }
-
-    /* Twitch behind everything */
+    /* ONLY background layering styles, no resizing */
     #twitchBg {
-      position: fixed;
-      inset: 0;
-      width: 100vw;
-      height: 100vh;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1000px;
+      height: 500px;
       border: 0;
       z-index: 0;
-      pointer-events: none;
+      pointer-events: none; /* lets you click/keyboard the game */
     }
 
-    /* Canvas above Twitch */
     #game {
-      position: fixed;
-      inset: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 10;
-      display: block;
-      border: 0;
-      outline: 0;
-      image-rendering: pixelated;
-      background: rgba(0,0,0,0.01);
-    }
-
-    #loginOverlay {
-      position: fixed;
-      inset: 0;
-      width: 100vw;
-      height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0,0,0,0.5);
-      z-index: 20;
-      gap: 10px;
-      padding: 20px;
-      box-sizing: border-box;
-    }
-
-    #usernameInput {
-      font-size: 20px;
-      padding: 10px;
-      width: min(600px, 70vw);
-      max-width: 90vw;
-    }
-
-    #usernameBtn {
-      font-size: 20px;
-      padding: 10px 16px;
-      cursor: pointer;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 5; /* above twitch */
+      background: transparent;
     }
   </style>
 </head>
 
 <body>
-  <!-- Twitch embed (errors here won't stop the game) -->
+  <!-- Twitch stream as BACKGROUND (same size as game, behind it) -->
+  <!-- IMPORTANT: Replace parent=YOUR_DOMAIN with the domain where this page is hosted -->
   <iframe
     id="twitchBg"
     src="https://player.twitch.tv/?channel=eberhex&parent=interactive-website-9620.onrender.com&muted=true"
-    allowfullscreen="true"
-    frameborder="0">
+    allowfullscreen="true">
   </iframe>
 
-  <!-- Fixed playable world size (DO NOT CHANGE) -->
-  <canvas id="game" width="1000" height="500" tabindex="0"></canvas>
+  <canvas id="game" width="1000" height="500" style="border:1px solid black;"></canvas>
 
-  <div id="loginOverlay">
-    <input id="usernameInput" type="text" placeholder="Enter username" />
-    <button id="usernameBtn" type="button">Go</button>
+  <div id="loginOverlay" 
+       style="position:absolute; top:0; left:1.1; width:1000px; height:500px;
+              display:flex; align-items:center; justify-content:center;
+              background:rgba(0,0,0,0.5); z-index:10;">
+    <input id="usernameInput" type="text" placeholder="Enter username" 
+           style="font-size:20px; padding:10px; width:60%;" />
+    <button id="usernameBtn" style="font-size:20px; margin-left:10px;">Go</button>
   </div>
 
   <script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
   <script>
-    console.log("GAME SCRIPT STARTED");
-    window.onerror = (msg, src, line, col, err) => {
-      console.log("JS ERROR:", msg, "at", src, line + ":" + col, err);
+    //"https://interactive-website-9620.onrender.com/socket.io/socket.io.js"
+    //"https://interactive-website-9620.onrender.com"
+    const socket = io("https://interactive-website-9620.onrender.com");
+
+    const box_1_img = new Image();
+    box_1_img.src = '/assets/obstacles/box_1.png';
+    box_1_img.onload = () => {
+      requestAnimationFrame(gameLoop);
+    }
+
+    const trampoline_img = new Image();
+    trampoline_img.src = '/assets/obstacles/trampoline.png';
+    trampoline_img.onload = () => {
+      requestAnimationFrame(gameLoop);
+    }
+
+    const idleImg = new Image();
+    idleImg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png';
+    idleImg.onload = () => {
+      requestAnimationFrame(gameLoop);
     };
 
-    // ===== Fixed playable world (DO NOT CHANGE) =====
-    const WORLD_W = 1000;
-    const WORLD_H = 500;
-
-    const HOST = "https://interactive-website-9620.onrender.com";
-
-    const canvas = document.getElementById("game");
-    const ctx = canvas.getContext("2d");
-
-    canvas.width = WORLD_W;
-    canvas.height = WORLD_H;
-    canvas.focus();
-
-    // Safe socket (won't break game if socket fails)
-    let socket = null;
-    try {
-      if (typeof io === "function") socket = io(HOST);
-    } catch (e) {
-      console.log("Socket init failed (safe):", e);
+    const runImg = new Image();
+    runImg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Run/Slime1_Run_body.png';
+    runImg.onload = () => {
+      requestAnimationFrame(gameLoop);
     }
 
-    // ===== Image loader with flags + logging =====
-    const loaded = { box: false, trampoline: false, idle: false, run: false, coin: false };
-
-    function loadImage(path, flagName) {
-      const im = new Image();
-      im.onload = () => { loaded[flagName] = true; console.log("LOADED:", im.src); };
-      im.onerror = () => { console.log("FAILED to load:", im.src); };
-      im.src = HOST + path;   // <-- ABSOLUTE URL FIX
-      return im;
+    const coinImg = new Image();
+    coinImg.src = '/assets/obstacles/coin.png';
+    coinImg.onload = () => {
+      requestAnimationFrame(gameLoop);
     }
 
-    const box_1_img = loadImage("/assets/obstacles/box_1.png", "box");
-    const coinImg = loadImage("/assets/obstacles/coin.png", "coin");
-
-    const idleImg = loadImage(
-      "/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png",
-      "idle"
-    );
-
-    const runImg = loadImage(
-      "/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Run/Slime1_Run_body.png",
-      "run"
-    );
-
-    let img = idleImg;
-
+    let img = idleImg
     const animations = {
       frameWidth: 64,
       frameHeight: 64,
@@ -148,8 +89,14 @@
       currentFrame: 0,
       frameRow: 0
     };
+    const canvas = document.getElementById('game');
+    canvas.setAttribute('tabindex', '0');
+    canvas.focus();
 
-    // ===== World objects =====
+    const box1 = canvas.getContext('2d');
+    const trampoline = canvas.getContext('2d');
+    const playObj = canvas.getContext('2d');
+
     const boxes = [
       {x: 0, y: 400, width: 20, height: 20},
       {x: 80, y: 450, width: 20, height: 20},
@@ -171,11 +118,12 @@
       {x: 750, y: 440, width: 20, height: 20},
       {x: 770, y: 440, width: 20, height: 20},
       {x: 790, y: 440, width: 20, height: 20},
+
       {x: 860, y: 400, width: 20, height: 20},
       {x: 860, y: 380, width: 20, height: 20},
+
       {x: 980, y: 380, width: 20, height: 20},
     ];
-
     const player = {
       x: 100,
       y: 480,
@@ -188,151 +136,137 @@
       gravity: 500,
       onGround: false,
       friction: 1200,
-      speedMax: 150,
-      running: false,
+      speedMax : 150,
+      running : false,
       jumping: false,
       username: "",
       action: "idle",
       score: 0
     };
-
-    // ===== Viewport scaling (fixed world, fullscreen display) =====
-    function getViewportSize() {
-      const w = Math.max(
-        1,
-        window.innerWidth || 0,
-        document.documentElement.clientWidth || 0,
-        document.body ? document.body.clientWidth : 0
-      );
-      const h = Math.max(
-        1,
-        window.innerHeight || 0,
-        document.documentElement.clientHeight || 0,
-        document.body ? document.body.clientHeight : 0
-      );
-      return { w, h };
-    }
-
-    function applyViewportTransform() {
-      const { w, h } = getViewportSize();
-      const scale = Math.min(w / WORLD_W, h / WORLD_H);
-      const offsetX = (w - WORLD_W * scale) / 2;
-      const offsetY = (h - WORLD_H * scale) / 2;
-      ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
-      return { w, h, scale, offsetX, offsetY };
-    }
-
-    function clearScreen() {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      const { w, h } = getViewportSize();
-      ctx.clearRect(0, 0, w, h);
-    }
-
-    // ===== Login overlay =====
-    const overlay = document.getElementById("loginOverlay");
-    const input = document.getElementById("usernameInput");
-    const button = document.getElementById("usernameBtn");
-    button.addEventListener("click", () => {
-      const name = input.value.trim() || "Player1";
-      player.username = name;
-
-      if (socket) {
-        socket.on("connect", () => socket.emit("new-player", { id: socket.id, name }));
-      }
-      overlay.style.display = "none";
-      canvas.focus();
-    });
-
-    // ===== Coin =====
-    let coin = null;
-    if (socket) {
-      socket.on("coin", data => coin = data);
-    }
-
-    // ===== Timing =====
     let lastTime = performance.now();
-    let frameTimer = 0;
-    const frameInterval = 0.1;
-    let animationStopper = false;
+    usernameprompt();
+    function usernameprompt(){
+      const overlay = document.getElementById('loginOverlay');
+      const input = document.getElementById('usernameInput');
+      const button = document.getElementById('usernameBtn');
 
-    function update(dt) {
-      frameTimer += dt;
+      button.addEventListener('click', () => {
+        const name = input.value.trim() || 'Player1';
+        player.username = name;
+        socket.on('connect', () => {
+          socket.emit('new-player', { id: socket.id, name });
+        });
+        overlay.style.display = 'none';
+        canvas.focus();  // Return focus to canvas for key events
+      });
+    }
+
+    function gameLoop(currentTime) {
+      const deltaTime = (currentTime - lastTime)/1000;
+      lastTime = currentTime;
+
+      update(deltaTime);
+      draw();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    let frameTimer = 0;
+    let animationStopper = false;
+    const frameInterval = 0.1;
+    let coin = null;
+    socket.on("coin", data => {
+      coin = data;
+      console.log("Coin received:", data.x, data.y);
+    });
+    function update(deltaTime) {
+
+      frameTimer += deltaTime;
       if (frameTimer >= frameInterval) {
         animations.currentFrame = (animations.currentFrame + 1) % animations.frameCount;
         frameTimer = 0;
       }
 
       for (const box of boxes) {
-        const onBottom =
-          player.y - player.height <= box.y - 1 &&
+
+        const onBottom = 
+          player.y - player.height <= box.y - 1 && 
           player.x + player.width > box.x &&
           player.x < box.x + box.width &&
           player.y > box.y;
 
-        const onTop =
+        const onTop = 
           player.x + player.width > box.x &&
           player.x < box.x + box.width &&
-          player.y + player.height <= box.y &&
-          player.y + player.height + player.Yv * dt >= box.y;
+          player.y + player.height <= box.y  &&
+          player.y + player.height + player.Yv * deltaTime >= box.y;
 
         const LeftSide =
           player.x + player.width >= box.x &&
           player.x + player.width <= box.x + box.width &&
           player.y + 4 <= box.y + box.height &&
-          player.y + player.height - 1 >= box.y;
+          player.y  + player.height -1 >= box.y;  
 
-        const RightSide =
-          player.x <= box.x + box.width &&
-          player.x >= box.x &&
-          player.y + 4 <= box.y + box.height &&
-          player.y + player.height - 1 >= box.y;
+        const RightSide = 
+          player.x  <= box.x + box.width &&
+          player.x  >= box.x  &&
+          player.y  + 4 <= box.y + box.height &&
+          player.y  + player.height - 1 >= box.y; 
 
         if (onTop) {
           player.y = box.y - player.height;
           player.Yv = 0;
           player.onGround = true;
           break;
-        } else {
+        } else if (!onTop) {
           player.onGround = false;
         }
 
-        if (onBottom) player.Yv = 10;
-        if (LeftSide) player.Xv = -80;
-        if (RightSide) player.Xv = 80;
-      }
+        if(onBottom) {
+          player.Yv = 10;
+        }
 
-      if (coin != null) {
-        const touching =
-          player.x < coin.x + 10 &&
-          player.x + player.width > coin.x &&
-          player.y < coin.y + 10 &&
-          player.y + player.height > coin.y;
-
-        if (touching) {
-          coin = null;
-          player.score++;
-          if (socket) socket.emit("coin_taken");
+        if (LeftSide) {
+          player.Xv = -80;
+        }
+        if (RightSide) {
+          player.Xv = 80;
         }
       }
 
-      if (!player.onGround) {
-        player.Yv += player.gravity * dt;
-        player.y += player.Yv * dt;
+      if (coin != null) {
+        let coin_touching = 
+          player.x < coin.x + 10 &&
+          player.x + player.width > coin.x &&
+          player.y < coin.y + 10 &&
+          player.y + player.height > coin.y
+
+        if (coin_touching) {
+          console.log("recieved a coin");
+          coin = null;
+          player.score++;
+          socket.emit("coin_taken");
+        }
       }
 
-      if (player.y + player.height >= WORLD_H) {
-        player.y = WORLD_H - player.height;
+      if(!player.onGround) {
+        player.Yv += player.gravity*deltaTime;
+        player.y += player.Yv *deltaTime;
+      }
+      if (player.y + player.height >= canvas.height) {
+        player.y = canvas.height - player.height;
         player.Yv = 0;
         player.onGround = true;
       }
 
-      if (player.onGround) {
-        if (player.jumping) player.Yforce += dt;
-
-        if (player.Xv >= -29 && player.Xv <= 29 && player.running === false) {
+      if(player.onGround) {
+        if(player.jumping) {
+          player.Yforce += deltaTime;
+        }
+        if (player.Xv >= -29 && player.Xv <= 29 && player.running == false) {
           player.Xv = 0;
-          if (!animationStopper) {
-            img = idleImg;
+          if (animationStopper == false) {
+            img = idleImg
             player.action = "idle";
             animations.currentFrame = 0;
             animations.frameCount = 6;
@@ -340,116 +274,58 @@
             animationStopper = true;
           }
         }
-
-        if (!player.running && player.Xv > 0) player.Xv -= player.friction * dt;
-        else if (!player.running && player.Xv < 0) player.Xv += player.friction * dt;
+        if(player.running == false && player.Xv > 0) {
+          player.Xv -= player.friction*deltaTime;
+        } else if (player.running == false && player.Xv < 0){
+          player.Xv += player.friction*deltaTime;
+        }
       }
+      player.x += player.Xv*deltaTime;
 
-      player.x += player.Xv * dt;
-
-      if (player.x <= 0) { player.x = 0; player.Xv = 80; }
-      else if (player.x + player.width >= WORLD_W) { player.x = WORLD_W - player.width; player.Xv = -80; }
+      if (player.x <= 0) {
+        player.x = 0;
+        player.Xv = 80;
+      } else if (player.x + player.width >= canvas.width) {
+        player.x = canvas.width - player.width;
+        player.Xv = -80;
+      }
     }
 
-    function drawWorldObjects() {
-      // world background + border
-      ctx.fillStyle = "rgba(0, 255, 255, 0.18)";
-      ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-
-      ctx.strokeStyle = "yellow";
-      ctx.lineWidth = 4;
-      ctx.strokeRect(2, 2, WORLD_W - 4, WORLD_H - 4);
-
-      // boxes
-      if (loaded.box) {
-        for (const b of boxes) {
-          ctx.drawImage(box_1_img, b.x - 5, b.y - 5, b.width + 12, b.height + 12);
-        }
-      } else {
-        ctx.fillStyle = "white";
-        for (const b of boxes) ctx.fillRect(b.x, b.y, b.width, b.height);
+    function setObjects() {
+      playObj.clearRect(0, 0, canvas.width, canvas.height);
+      for (const box of boxes) {
+        playObj.drawImage(box_1_img, box.x-5, box.y-5, box.width +12, box.height +12);
       }
-
-      // coin
       if (coin != null) {
-        if (loaded.coin) ctx.drawImage(coinImg, coin.x, coin.y, 20, 20);
-        else {
-          ctx.fillStyle = "gold";
-          ctx.fillRect(coin.x, coin.y, 20, 20);
-        }
+        playObj.drawImage(coinImg, coin.x, coin.y, 20, 20);
       }
     }
 
     function draw() {
-      clearScreen();
-      const vp = applyViewportTransform();
-
-      // debug header (so you can always see something)
-      ctx.fillStyle = "white";
-      ctx.font = "16px Arial";
-      ctx.textAlign = "left";
-      ctx.fillText(
-        `VIEW ${vp.w}x${vp.h} scale ${vp.scale.toFixed(3)} off ${vp.offsetX.toFixed(1)},${vp.offsetY.toFixed(1)}`,
-        10, 22
+      setObjects();
+      playObj.drawImage(
+        img,
+        animations.currentFrame * animations.frameWidth, 
+        animations.frameRow * animations.frameHeight,
+        animations.frameWidth, animations.frameHeight,
+        player.x- 20, player.y - 20,
+        animations.frameWidth, animations.frameHeight
       );
 
-      drawWorldObjects();
+      playObj.font = '16px Arial';
+      playObj.fillStyle = 'blue';
+      playObj.textAlign = 'center';
+      playObj.textBaseline = 'bottom';
 
-      // player
-      if (loaded.idle) {
-        ctx.drawImage(
-          img,
-          animations.currentFrame * animations.frameWidth,
-          animations.frameRow * animations.frameHeight,
-          animations.frameWidth, animations.frameHeight,
-          player.x - 20, player.y - 20,
-          animations.frameWidth, animations.frameHeight
-        );
-      } else {
-        ctx.fillStyle = "red";
-        ctx.fillRect(player.x, player.y, player.width, player.height);
-      }
-
-      // player name + score
-      ctx.fillStyle = "deepskyblue";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "bottom";
-      ctx.fillText(player.username || "Player", player.x + player.width / 2, player.y - 5);
-
-      ctx.fillStyle = "white";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "alphabetic";
-      ctx.fillText("Current score: " + player.score, 10, WORLD_H - 10);
-
-      if (socket) {
-        socket.emit("move", {
-          x: player.x,
-          y: player.y,
-          frameCount: animations.frameCount,
-          frameIndex: animations.currentFrame,
-          frameRow: animations.frameRow,
-          username: player.username,
-          emote: player.action,
-          score: player.score
-        });
-      }
+      playObj.fillText(player.username, player.x + player.width/2, player.y - 5);
+      playObj.fillText("Current score: " + player.score, 0, 490);
+      socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action, score :player.score });
     }
 
-    function loop(t) {
-      const dt = (t - lastTime) / 1000;
-      lastTime = t;
-
-      update(dt);
-      draw();
-
-      requestAnimationFrame(loop);
-    }
-
-    // ===== Input =====
-    canvas.addEventListener("keydown", (e) => {
+    canvas.addEventListener('keydown', e => {
       if (e.key === "ArrowRight" && player.onGround) {
         player.action = "run";
-        if (!player.running) {
+        if (player.running == false){
           img = runImg;
           animations.currentFrame = 0;
           animations.frameCount = 8;
@@ -459,10 +335,9 @@
         player.running = true;
         player.Xv = player.speedMax;
       }
-
       if (e.key === "ArrowLeft" && player.onGround) {
         player.action = "run";
-        if (!player.running) {
+        if (player.running == false){
           img = runImg;
           animations.currentFrame = 0;
           animations.frameCount = 8;
@@ -470,36 +345,41 @@
           animationStopper = false;
         }
         player.running = true;
-        player.Xv = -player.speedMax;
+        player.Xv = -1* player.speedMax;
+      }
+      if (e.key === "ArrowUp")  {
+        if(player.onGround == true) {
+          player.jumping = true;
+        }
       }
 
-      if (e.key === "ArrowUp") {
-        if (player.onGround) player.jumping = true;
-      }
+      socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action });
+      draw();
     });
 
-    canvas.addEventListener("keyup", (e) => {
-      if (e.key === "ArrowRight" || e.key === "ArrowLeft") player.running = false;
+    canvas.addEventListener('keyup', e => {
+      if (e.key === "ArrowRight") player.running = false;
+      if (e.key === "ArrowLeft") player.running = false;
 
       if (e.key === "ArrowUp") {
-        if (player.onGround) {
+        if (player.onGround){
           player.jumping = false;
           player.onGround = false;
           if (player.Yforce > player.YforceMax) player.Yforce = player.YforceMax;
-          player.Yv -= player.Yforce * 180 + 200;
+          player.Yv -= player.Yforce*180 + 200;
           player.Yforce = 0;
         }
       }
+
+      socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action });
+      draw();
     });
 
-    window.addEventListener("click", () => canvas.focus());
-    window.addEventListener("resize", () => draw());
-
-    // Start loop immediately
-    requestAnimationFrame(loop);
+    requestAnimationFrame(gameLoop);
   </script>
 </body>
 </html>
+
 
 
 
