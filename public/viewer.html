@@ -363,15 +363,13 @@ ctx.fillText("DRAW LOOP RUNNING", 10, 30);
       applyViewportTransform();
 
       // faint background so you can see the world bounds
-      console.log("background")
+
       ctx.fillStyle = "rgba(0,0,0,0.25)";
       ctx.fillRect(0, 0, WORLD_W, WORLD_H);
 
       drawWorldObjects();
-      console.log("drawobjects")
       // Player sprite fallback
       if (loaded.idle) {
-        console.log("player idle")
         ctx.drawImage(
           img,
           animations.currentFrame * animations.frameWidth,
@@ -408,7 +406,6 @@ ctx.fillText("DRAW LOOP RUNNING", 10, 30);
     }
 
     function gameLoop(currentTime) {
-      console.log("Game loop running")
       const deltaTime = (currentTime - lastTime) / 1000;
       lastTime = currentTime;
 
@@ -474,6 +471,7 @@ ctx.fillText("DRAW LOOP RUNNING", 10, 30);
   </script>
 </body>
 </html>
+
 
 
 
