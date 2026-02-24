@@ -15,6 +15,7 @@
       background: #000;
     }
 
+    /* Twitch behind */
     #twitchBg {
       position: fixed;
       inset: 0;
@@ -25,6 +26,7 @@
       pointer-events: none;
     }
 
+    /* Canvas visually fullscreen, world stays fixed */
     #game {
       position: fixed;
       inset: 0;
@@ -33,10 +35,11 @@
       border: none;
       outline: none;
       z-index: 2;
-      image-rendering: pixelated;
       display: block;
+      image-rendering: pixelated;
     }
 
+    /* Overlay fullscreen */
     #loginOverlay {
       position: fixed;
       inset: 0;
@@ -64,17 +67,6 @@
       padding: 10px 16px;
       cursor: pointer;
     }
-
-    #fsBtn {
-      position: fixed;
-      right: 12px;
-      top: 12px;
-      z-index: 5;
-      padding: 10px 14px;
-      font-size: 14px;
-      cursor: pointer;
-      opacity: 0.9;
-    }
   </style>
 </head>
 
@@ -86,8 +78,7 @@
     frameborder="0">
   </iframe>
 
-  <button id="fsBtn" type="button">Fullscreen</button>
-
+  <!-- Playable area fixed at 1000x500 -->
   <canvas id="game" width="1000" height="500" tabindex="0"></canvas>
 
   <div id="loginOverlay">
@@ -100,34 +91,25 @@
   <script>
     const socket = io("https://interactive-website-9620.onrender.com");
 
-    // Fixed playable area
+    // Fixed playable world
     const WORLD_W = 1000;
     const WORLD_H = 500;
 
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d', { alpha: true });
 
+    // Lock internal resolution (do not change playable area)
     canvas.width = WORLD_W;
     canvas.height = WORLD_H;
     canvas.focus();
 
-    // Asset loading flags (so we don’t draw before images exist)
-    const loaded = {
-      box: false,
-      trampoline: false,
-      idle: false,
-      run: false,
-      coin: false
-    };
+    // Asset loading flags
+    const loaded = { box: false, idle: false, run: false, coin: false };
 
     // Assets
     const box_1_img = new Image();
     box_1_img.onload = () => loaded.box = true;
     box_1_img.src = '/assets/obstacles/box_1.png';
-
-    const trampoline_img = new Image();
-    trampoline_img.onload = () => loaded.trampoline = true;
-    trampoline_img.src = '/assets/obstacles/trampoline.png';
 
     const idleImg = new Image();
     idleImg.onload = () => loaded.idle = true;
@@ -151,6 +133,7 @@
       frameRow: 0
     };
 
+    // World objects
     const boxes = [
       {x: 0, y: 400, width: 20, height: 20},
       {x: 80, y: 450, width: 20, height: 20},
@@ -197,16 +180,7 @@
       score: 0
     };
 
-    let lastTime = performance.now();
-    let frameTimer = 0;
-    let animationStopper = false;
-    const frameInterval = 0.1;
-
-    let coin = null;
-    socket.on("coin", data => {
-      coin = data;
-    });
-
+    // Scale+center world into the current window (NO CROPPING)
     function applyViewportTransform() {
       const scale = Math.min(window.innerWidth / WORLD_W, window.innerHeight / WORLD_H);
       const offsetX = (window.innerWidth - WORLD_W * scale) / 2;
@@ -214,11 +188,11 @@
       ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
     }
 
-    function clearScreen() {
+    // Clear only the world canvas (reliable, avoids weird clears when scaled)
+    function clearWorld() {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, canvas.width, canvas.height); // clear canvas reliably
-      // Also clear the visual area (safe, even though canvas clips)
-      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      ctx.clearRect(0, 0, WORLD_W, WORLD_H);
+      // Note: canvas is clipped to its own size anyway, so this is enough.
     }
 
     window.addEventListener('resize', () => draw());
@@ -233,6 +207,7 @@
         const name = input.value.trim() || 'Player1';
         player.username = name;
 
+        // Emit once connected
         socket.on('connect', () => {
           socket.emit('new-player', { id: socket.id, name });
         });
@@ -242,15 +217,15 @@
       });
     })();
 
-    function gameLoop(currentTime) {
-      const deltaTime = (currentTime - lastTime) / 1000;
-      lastTime = currentTime;
+    let lastTime = performance.now();
+    let frameTimer = 0;
+    const frameInterval = 0.1;
+    let animationStopper = false;
 
-      update(deltaTime);
-      draw();
-
-      requestAnimationFrame(gameLoop);
-    }
+    let coin = null;
+    socket.on("coin", data => {
+      coin = data;
+    });
 
     function update(deltaTime) {
       frameTimer += deltaTime;
@@ -353,13 +328,12 @@
       }
     }
 
-    function setObjects() {
+    function drawWorldObjects() {
       if (loaded.box) {
         for (const box of boxes) {
           ctx.drawImage(box_1_img, box.x - 5, box.y - 5, box.width + 12, box.height + 12);
         }
       } else {
-        // fallback boxes while image loads
         ctx.fillStyle = "rgba(255,255,255,0.25)";
         for (const box of boxes) ctx.fillRect(box.x, box.y, box.width, box.height);
       }
@@ -374,16 +348,16 @@
     }
 
     function draw() {
-      clearScreen();
+      clearWorld();
       applyViewportTransform();
 
-      // simple background so you can always see something
+      // faint background so you can see the world bounds
       ctx.fillStyle = "rgba(0,0,0,0.25)";
       ctx.fillRect(0, 0, WORLD_W, WORLD_H);
 
-      setObjects();
+      drawWorldObjects();
 
-      // Player
+      // Player sprite fallback
       if (loaded.idle) {
         ctx.drawImage(
           img,
@@ -394,7 +368,6 @@
           animations.frameWidth, animations.frameHeight
         );
       } else {
-        // fallback player while sprite loads
         ctx.fillStyle = "lime";
         ctx.fillRect(player.x, player.y, player.width, player.height);
       }
@@ -419,6 +392,16 @@
         emote: player.action,
         score: player.score
       });
+    }
+
+    function gameLoop(currentTime) {
+      const deltaTime = (currentTime - lastTime) / 1000;
+      lastTime = currentTime;
+
+      update(deltaTime);
+      draw();
+
+      requestAnimationFrame(gameLoop);
     }
 
     // Input
@@ -472,21 +455,12 @@
     // Keep focus on canvas
     window.addEventListener('click', () => canvas.focus());
 
-    // Fullscreen button
-    document.getElementById('fsBtn').addEventListener('click', async () => {
-      try {
-        await document.documentElement.requestFullscreen();
-        canvas.focus();
-      } catch (err) {
-        console.log("Fullscreen failed:", err);
-      }
-    });
-
-    // Start loop immediately (no dependency on image onload)
+    // Start loop immediately
     requestAnimationFrame(gameLoop);
   </script>
 </body>
 </html>
+
 
 
 
