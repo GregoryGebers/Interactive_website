@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Game (Fixed World, Scaled View)</title>
+  <title>Control Your Character</title>
 
   <style>
     html, body {
@@ -19,8 +19,8 @@
     #twitchBg {
       position: fixed;
       inset: 0;
-      width: 50vw;
-      height: 50vh;
+      width: 100vw;
+      height: 100vh;
       border: 0;
       z-index: 0;
       pointer-events: none;
@@ -30,8 +30,8 @@
     #game {
       position: fixed;
       inset: 0;
-      width: 50vw;
-      height: 50vh;
+      width: 100vw;
+      height: 100vh;
       z-index: 10;
       display: block;
       border: 0;
@@ -79,7 +79,7 @@
     frameborder="0">
   </iframe>
 
-  <!-- Fixed playable world size -->
+  <!-- Fixed playable world size (DO NOT CHANGE) -->
   <canvas id="game" width="1000" height="500" tabindex="0"></canvas>
 
   <div id="loginOverlay">
@@ -98,8 +98,11 @@
     const WORLD_W = 1000;
     const WORLD_H = 500;
 
+    const HOST = "https://interactive-website-9620.onrender.com";
+
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
+
     canvas.width = WORLD_W;
     canvas.height = WORLD_H;
     canvas.focus();
@@ -107,26 +110,35 @@
     // Safe socket (won't break game if socket fails)
     let socket = null;
     try {
-      if (typeof io === "function") socket = io("https://interactive-website-9620.onrender.com");
+      if (typeof io === "function") socket = io(HOST);
     } catch (e) {
       console.log("Socket init failed (safe):", e);
     }
 
-    // ===== Load images safely with flags + error logging =====
-    const loaded = { box: false, idle: false, run: false, coin: false };
+    // ===== Image loader with flags + logging =====
+    const loaded = { box: false, trampoline: false, idle: false, run: false, coin: false };
 
-    function loadImage(src, flagName) {
+    function loadImage(path, flagName) {
       const im = new Image();
-      im.onload = () => { loaded[flagName] = true; };
-      im.onerror = () => { console.log("IMAGE FAILED:", src); };
-      im.src = src;
+      im.onload = () => { loaded[flagName] = true; console.log("LOADED:", im.src); };
+      im.onerror = () => { console.log("FAILED to load:", im.src); };
+      im.src = HOST + path;   // <-- ABSOLUTE URL FIX
       return im;
     }
 
     const box_1_img = loadImage("/assets/obstacles/box_1.png", "box");
-    const idleImg  = loadImage("/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png", "idle");
-    const runImg   = loadImage("/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Run/Slime1_Run_body.png", "run");
-    const coinImg  = loadImage("/assets/obstacles/coin.png", "coin");
+    const trampoline_img = loadImage("/assets/obstacles/trampoline.png", "trampoline");
+    const coinImg = loadImage("/assets/obstacles/coin.png", "coin");
+
+    const idleImg = loadImage(
+      "/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png",
+      "idle"
+    );
+
+    const runImg = loadImage(
+      "/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Run/Slime1_Run_body.png",
+      "run"
+    );
 
     let img = idleImg;
 
@@ -138,7 +150,7 @@
       frameRow: 0
     };
 
-    // World objects (always exist)
+    // ===== World objects =====
     const boxes = [
       {x: 0, y: 400, width: 20, height: 20},
       {x: 80, y: 450, width: 20, height: 20},
@@ -185,14 +197,16 @@
       score: 0
     };
 
-    // ===== IMPORTANT FIX: viewport size must never be 0 =====
+    // ===== Viewport scaling (fixed world, fullscreen display) =====
     function getViewportSize() {
-      const w = Math.max(1,
+      const w = Math.max(
+        1,
         window.innerWidth || 0,
         document.documentElement.clientWidth || 0,
         document.body ? document.body.clientWidth : 0
       );
-      const h = Math.max(1,
+      const h = Math.max(
+        1,
         window.innerHeight || 0,
         document.documentElement.clientHeight || 0,
         document.body ? document.body.clientHeight : 0
@@ -206,13 +220,11 @@
       const offsetX = (w - WORLD_W * scale) / 2;
       const offsetY = (h - WORLD_H * scale) / 2;
       ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
-      return { scale, offsetX, offsetY, w, h };
+      return { w, h, scale, offsetX, offsetY };
     }
 
     function clearScreen() {
-      // Clear in identity space
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
       const { w, h } = getViewportSize();
       ctx.clearRect(0, 0, w, h);
     }
@@ -232,13 +244,13 @@
       canvas.focus();
     });
 
-    // Coin
+    // ===== Coin =====
     let coin = null;
     if (socket) {
       socket.on("coin", data => coin = data);
     }
 
-    // Timing
+    // ===== Timing =====
     let lastTime = performance.now();
     let frameTimer = 0;
     const frameInterval = 0.1;
@@ -251,7 +263,6 @@
         frameTimer = 0;
       }
 
-      // collisions
       for (const box of boxes) {
         const onBottom =
           player.y - player.height <= box.y - 1 &&
@@ -291,7 +302,6 @@
         if (RightSide) player.Xv = 80;
       }
 
-      // coin
       if (coin != null) {
         const touching =
           player.x < coin.x + 10 &&
@@ -306,20 +316,17 @@
         }
       }
 
-      // gravity
       if (!player.onGround) {
         player.Yv += player.gravity * dt;
         player.y += player.Yv * dt;
       }
 
-      // floor
       if (player.y + player.height >= WORLD_H) {
         player.y = WORLD_H - player.height;
         player.Yv = 0;
         player.onGround = true;
       }
 
-      // friction + idle
       if (player.onGround) {
         if (player.jumping) player.Yforce += dt;
 
@@ -339,41 +346,32 @@
         else if (!player.running && player.Xv < 0) player.Xv += player.friction * dt;
       }
 
-      // move X
       player.x += player.Xv * dt;
 
       if (player.x <= 0) { player.x = 0; player.Xv = 80; }
       else if (player.x + player.width >= WORLD_W) { player.x = WORLD_W - player.width; player.Xv = -80; }
     }
 
-    function draw() {
-      clearScreen();
-      const vp = applyViewportTransform();
-
-      // VERY visible world background + border (you cannot miss it)
-      ctx.fillStyle = "rgba(0, 255, 255, 0.25)";
+    function drawWorldObjects() {
+      // world background + border
+      ctx.fillStyle = "rgba(0, 255, 255, 0.18)";
       ctx.fillRect(0, 0, WORLD_W, WORLD_H);
 
       ctx.strokeStyle = "yellow";
       ctx.lineWidth = 4;
       ctx.strokeRect(2, 2, WORLD_W - 4, WORLD_H - 4);
 
-      // Debug text proving transform values
-      ctx.fillStyle = "white";
-      ctx.font = "16px Arial";
-      ctx.textAlign = "left";
-      ctx.fillText(`VIEW: ${vp.w}x${vp.h}  scale:${vp.scale.toFixed(3)}  off:${vp.offsetX.toFixed(1)},${vp.offsetY.toFixed(1)}`, 10, 22);
-      ctx.fillText("If you see this, rendering is working.", 10, 42);
-
-      // Boxes (always draw something)
+      // boxes
       if (loaded.box) {
-        for (const b of boxes) ctx.drawImage(box_1_img, b.x - 5, b.y - 5, b.width + 12, b.height + 12);
+        for (const b of boxes) {
+          ctx.drawImage(box_1_img, b.x - 5, b.y - 5, b.width + 12, b.height + 12);
+        }
       } else {
         ctx.fillStyle = "white";
         for (const b of boxes) ctx.fillRect(b.x, b.y, b.width, b.height);
       }
 
-      // Coin
+      // coin
       if (coin != null) {
         if (loaded.coin) ctx.drawImage(coinImg, coin.x, coin.y, 20, 20);
         else {
@@ -381,8 +379,24 @@
           ctx.fillRect(coin.x, coin.y, 20, 20);
         }
       }
+    }
 
-      // Player (always draw something)
+    function draw() {
+      clearScreen();
+      const vp = applyViewportTransform();
+
+      // debug header (so you can always see something)
+      ctx.fillStyle = "white";
+      ctx.font = "16px Arial";
+      ctx.textAlign = "left";
+      ctx.fillText(
+        `VIEW ${vp.w}x${vp.h} scale ${vp.scale.toFixed(3)} off ${vp.offsetX.toFixed(1)},${vp.offsetY.toFixed(1)}`,
+        10, 22
+      );
+
+      drawWorldObjects();
+
+      // player
       if (loaded.idle) {
         ctx.drawImage(
           img,
@@ -397,14 +411,21 @@
         ctx.fillRect(player.x, player.y, player.width, player.height);
       }
 
-      // HUD
+      // player name + score
+      ctx.fillStyle = "deepskyblue";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(player.username || "Player", player.x + player.width / 2, player.y - 5);
+
       ctx.fillStyle = "white";
       ctx.textAlign = "left";
-      ctx.fillText(`Score: ${player.score}`, 10, WORLD_H - 10);
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText("Current score: " + player.score, 10, WORLD_H - 10);
 
       if (socket) {
         socket.emit("move", {
-          x: player.x, y: player.y,
+          x: player.x,
+          y: player.y,
           frameCount: animations.frameCount,
           frameIndex: animations.currentFrame,
           frameRow: animations.frameRow,
@@ -418,12 +439,14 @@
     function loop(t) {
       const dt = (t - lastTime) / 1000;
       lastTime = t;
+
       update(dt);
       draw();
+
       requestAnimationFrame(loop);
     }
 
-    // Input
+    // ===== Input =====
     canvas.addEventListener("keydown", (e) => {
       if (e.key === "ArrowRight" && player.onGround) {
         player.action = "run";
@@ -473,10 +496,12 @@
     window.addEventListener("click", () => canvas.focus());
     window.addEventListener("resize", () => draw());
 
+    // Start loop immediately
     requestAnimationFrame(loop);
   </script>
 </body>
 </html>
+
 
 
 
