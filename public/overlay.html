@@ -13,10 +13,25 @@
 
   socket.on("init", data => {
     for (const id in players) delete players[id];
-    for (const id in data) players[id] = data[id];
+    for (const id in data) {
+      const p = data[id];
+      players[id] = { ...p, renderX: p.x, renderY: p.y };
+    }
   });
-  socket.on("new-player", data => players[data.id] = data);
-  socket.on("player-move", data => players[data.id] = data);
+  socket.on("new-player", data => {
+    players[data.id] = { ...data, renderX: data.x, renderY: data.y };
+  });
+  socket.on("player-move", data => {
+    const existing = players[data.id];
+    if (existing) {
+      // Merge into the SAME object so renderX/renderY (the smoothed display
+      // position) survive — this is what lets the interpolation keep easing
+      // toward the new target instead of snapping straight to it.
+      Object.assign(existing, data);
+    } else {
+      players[data.id] = { ...data, renderX: data.x, renderY: data.y };
+    }
+  });
   socket.on("remove-player", id => delete players[id]);
   const idleimg = new Image();
   idleimg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png';
@@ -95,11 +110,32 @@
   const GROUND_GRASS_HEIGHT = 14;
   const GROUND_TILE_WIDTH = 40;
   const BOX_GRASS_HEIGHT = 10;
-    
+
+  // Players only send a position update ~30x/sec (see viewer.html's move
+  // throttle), but this canvas redraws ~60x/sec. Snapping straight to each
+  // new position on arrival is what caused the stutter/teleport look.
+  // Instead we ease the drawn position toward the latest known target every
+  // frame, scaled by actual elapsed time so it looks the same regardless of
+  // OBS's frame rate.
+  const OTHER_PLAYER_SMOOTHING_TAU = 0.08; // seconds — lower = snappier, higher = smoother
+  let lastFrameTime = performance.now();
+
+  function updatePlayerInterpolation(deltaTime) {
+    const factor = 1 - Math.exp(-deltaTime / OTHER_PLAYER_SMOOTHING_TAU);
+    for (const id in players) {
+      const p = players[id];
+      p.renderX += (p.x - p.renderX) * factor;
+      p.renderY += (p.y - p.renderY) * factor;
+    }
+  }
 
 
-  function draw() {
-    
+  function draw(currentTime) {
+    const now = currentTime || performance.now();
+    const deltaTime = Math.min((now - lastFrameTime) / 1000, 0.25); // clamp huge gaps (e.g. tab was backgrounded)
+    lastFrameTime = now;
+
+    updatePlayerInterpolation(deltaTime);
     setObjects();
     let high_score = -1;
     let high_user = "";
@@ -121,7 +157,7 @@
       p.frameIndex * fw, 
       p.frameRow * fh,
       fw, fh,
-      p.x- 20, p.y - 20,
+      p.renderX - 20, p.renderY - 20,
       fw, fh
     );
 
@@ -130,7 +166,7 @@
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(p.username, p.x + 10, p.y - 5);
+    ctx.fillText(p.username, p.renderX + 10, p.renderY - 5);
     }
     requestAnimationFrame(draw);
     ctx.font = 'bold 25px Arial';
@@ -155,7 +191,7 @@
       }
   }
 
-  draw();
+  requestAnimationFrame(draw);
 </script>
 </body>
 </html>

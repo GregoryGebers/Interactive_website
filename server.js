@@ -120,21 +120,37 @@ const lastMoveAt = {};
 io.on('connection', (socket) => {
   console.log(`[connect] ${socket.id} recovered=${socket.recovered}`);
 
-  // If this connection was recovered, don't stomp on the player's existing
-  // state (position/score) with a fresh default.
-  if (!socket.recovered || !players[socket.id]) {
-    players[socket.id] = { x: 100, y: 100, emote: 'idle', score: 0, color: DEFAULT_USERNAME_COLOR };
-  }
-
   // Cancel any pending removal for this id — they're back.
   if (pendingRemoval[socket.id]) {
     clearTimeout(pendingRemoval[socket.id]);
     delete pendingRemoval[socket.id];
   }
 
+  // Every connection gets the current world state, but does NOT become a
+  // player itself just by connecting. overlay.html connects purely to watch
+  // (it never sends "join"), so it should never spawn a character — that was
+  // the bug: previously any socket, including the overlay's own read-only
+  // connection, was auto-registered as a player at (100,100) on connect.
   socket.emit('init', players);
   socket.emit('coin', currentCoin);
-  socket.broadcast.emit('new-player', { id: socket.id, ...players[socket.id] });
+
+  socket.on('join', (data) => {
+    try {
+      if (players[socket.id]) return; // already joined (e.g. a recovered reconnect)
+
+      const username = data && typeof data.username === 'string'
+        ? data.username.slice(0, MAX_USERNAME_LENGTH)
+        : '';
+      const color = data && typeof data.color === 'string' && HEX_COLOR_RE.test(data.color)
+        ? data.color
+        : DEFAULT_USERNAME_COLOR;
+
+      players[socket.id] = { x: 100, y: 100, emote: 'idle', score: 0, username, color };
+      socket.broadcast.emit('new-player', { id: socket.id, ...players[socket.id] });
+    } catch (err) {
+      console.error(`[join] error from ${socket.id}:`, err);
+    }
+  });
 
   socket.on('coin_taken', () => {
     try {
@@ -152,6 +168,8 @@ io.on('connection', (socket) => {
 
   socket.on('move', (data) => {
     try {
+      if (!players[socket.id]) return; // hasn't joined as a player (e.g. a spectator connection)
+
       const now = Date.now();
       if (lastMoveAt[socket.id] && now - lastMoveAt[socket.id] < MIN_MOVE_INTERVAL_MS) {
         return; // drop, too frequent
@@ -174,6 +192,8 @@ io.on('connection', (socket) => {
   socket.on('disconnect', (reason) => {
     console.log(`[disconnect] ${socket.id} (${reason})`);
     delete lastMoveAt[socket.id];
+
+    if (!players[socket.id]) return; // never joined as a player — nothing to clean up
 
     // Don't remove immediately — give them a window to reconnect.
     pendingRemoval[socket.id] = setTimeout(() => {

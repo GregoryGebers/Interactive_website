@@ -305,6 +305,10 @@
     };
 
     // ---- Other connected players, keyed by socket id ----
+    // Each entry carries both the latest known true position (x/y, from the
+    // server) and a smoothed render position (renderX/renderY) that eases
+    // toward it every frame — see updateOtherPlayersInterpolation() below.
+    // This is what removes the teleport/stutter look between network updates.
     const otherPlayers = {};
 
     socket.on("init", (data) => {
@@ -316,26 +320,61 @@
       }
       for (const id in data) {
         if (id !== socket.id) {
-          otherPlayers[id] = data[id];
+          const p = data[id];
+          otherPlayers[id] = { ...p, renderX: p.x, renderY: p.y };
         }
       }
     });
 
     socket.on("new-player", (data) => {
       if (data.id !== socket.id) {
-        otherPlayers[data.id] = data;
+        otherPlayers[data.id] = { ...data, renderX: data.x, renderY: data.y };
       }
     });
 
     socket.on("player-move", (data) => {
       if (data.id !== socket.id) {
-        otherPlayers[data.id] = data;
+        const existing = otherPlayers[data.id];
+        if (existing) {
+          // Merge into the SAME object so renderX/renderY survive — this is
+          // what lets the interpolation keep easing toward the new target
+          // instead of snapping to it.
+          Object.assign(existing, data);
+        } else {
+          otherPlayers[data.id] = { ...data, renderX: data.x, renderY: data.y };
+        }
       }
     });
 
     socket.on("remove-player", (id) => {
       delete otherPlayers[id];
     });
+
+    // How quickly the rendered position catches up to the real one. Smaller
+    // = snappier but more visible stutter; larger = smoother but more lag.
+    const OTHER_PLAYER_SMOOTHING_TAU = 0.08; // seconds
+
+    function updateOtherPlayersInterpolation(deltaTime) {
+      const factor = 1 - Math.exp(-deltaTime / OTHER_PLAYER_SMOOTHING_TAU);
+      for (const id in otherPlayers) {
+        const p = otherPlayers[id];
+        p.renderX += (p.x - p.renderX) * factor;
+        p.renderY += (p.y - p.renderY) * factor;
+      }
+    }
+
+    // Only sent once a username has actually been chosen — this is what the
+    // server uses to decide whether a socket should get a visible character
+    // at all, so a spectator-only connection (like overlay.html) never spawns
+    // a ghost player just by connecting.
+    let hasJoined = false;
+    function sendJoin() {
+      if (!hasJoined) return;
+      socket.emit('join', { username: player.username, color: player.color });
+    }
+    // Re-join automatically after a reconnect (fires on first connect too,
+    // when it's a harmless no-op since hasJoined is still false then).
+    socket.on('connect', sendJoin);
 
     let lastTime = performance.now();
     usernameprompt();
@@ -349,6 +388,8 @@
         const name = input.value.trim() || 'Player1';
         player.username = name;
         player.color = colorInput.value || '#1e3fff';
+        hasJoined = true;
+        sendJoin();
         overlay.style.display = 'none';
         canvas.focus();  // Return focus to canvas for key events
       });
@@ -382,6 +423,8 @@
       coin = null;
     });
     function update(deltaTime) {
+
+      updateOtherPlayersInterpolation(deltaTime);
 
       frameTimer += deltaTime;
       if (frameTimer >= frameInterval) {
@@ -521,13 +564,15 @@
     function drawOtherPlayer(p) {
       const fw = 64, fh = 64;
       const sprite = p.emote === "run" ? runImg : idleImg;
+      const rx = p.renderX ?? p.x;
+      const ry = p.renderY ?? p.y;
 
       playObj.drawImage(
         sprite,
         (p.frameIndex || 0) * fw,
         (p.frameRow || 0) * fh,
         fw, fh,
-        p.x - 20, p.y - 20,
+        rx - 20, ry - 20,
         fw, fh
       );
 
@@ -535,7 +580,7 @@
       playObj.fillStyle = p.color || 'blue';
       playObj.textAlign = 'center';
       playObj.textBaseline = 'bottom';
-      playObj.fillText(p.username || '', p.x + 10, p.y - 5);
+      playObj.fillText(p.username || '', rx + 10, ry - 5);
     }
 
     function draw() {
