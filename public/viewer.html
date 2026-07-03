@@ -31,16 +31,19 @@
       background: black;
     }
 
-    /* Twitch stream as BACKGROUND, fills the whole viewport */
+    /* Twitch stream as BACKGROUND, fills the whole viewport. The Embed SDK
+       injects its own iframe inside this div (see script below) and sizes
+       it to 100%/100% to match. */
     #twitchBg {
       position: absolute;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
-      border: 0;
       z-index: 0;
-      pointer-events: none; /* lets you click/keyboard the game */
+      pointer-events: none; /* lets clicks/keys reach the game canvas above it;
+                                playback is controlled via #twitchControls instead */
+      overflow: hidden;
     }
 
     #game {
@@ -149,6 +152,19 @@
       outline-offset: 2px;
     }
 
+    .pixel-btn-small {
+      font-size: 11px;
+      padding: 8px 12px;
+      box-shadow: 3px 3px 0 var(--ink);
+    }
+
+    #twitchControls {
+      position: absolute;
+      bottom: 14px;
+      left: 14px;
+      z-index: 20;
+    }
+
     #usernameColor {
       width: 40px;
       height: 40px;
@@ -200,17 +216,18 @@
 </head>
 
 <body>
-  <!-- Twitch stream as BACKGROUND (same size as game, behind it). Its src is
-       set dynamically in JS below so the required "parent" param always
-       matches whatever domain is actually serving this page. -->
-  <iframe
-    id="twitchBg"
-    allowfullscreen="true">
-  </iframe>
+  <!-- Twitch stream as BACKGROUND (same size as game, behind it). The Twitch
+       Embed SDK (loaded below) injects its own iframe into this div — using
+       the SDK instead of a raw <iframe src="..."> gives us a real .play()/
+       .setMuted() API so the #twitchControls button below can actually
+       control it. -->
+  <div id="twitchBg"></div>
 
   <canvas id="game"></canvas>
 
   <div id="connectionStatus" style="display:none;">Connecting...</div>
+
+  <button id="twitchControls" class="pixel-btn pixel-btn-small" style="display:none;">▶ Play Stream</button>
 
   <div id="loginOverlay">
     <div class="login-box">
@@ -224,6 +241,7 @@
     </div>
   </div>
 
+  <script src="https://embed.twitch.tv/embed/v1.js"></script>
   <script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
   <script>
     // ---- Twitch background --------------------------------------------------
@@ -234,20 +252,63 @@
     // domain, or testing on localhost — no manual editing needed per-deploy.
     //
     // Change TWITCH_CHANNEL below to your actual channel name.
-    const TWITCH_CHANNEL = 'Grian';
-    (function setupTwitchBackground() {
-      const parents = [window.location.hostname];
-      // If you test locally alongside the deployed site, uncomment:
-      // parents.push('localhost');
+    const TWITCH_CHANNEL = 'eberhex';
 
+    // Browsers only allow autoplay when a video starts muted (or after a
+    // real click), which is why it used to just sit there paused with an
+    // unclickable play button — the background div had pointer-events:none
+    // so the game canvas underneath could still receive clicks/keys, which
+    // meant Twitch's own play button was visually there but un-clickable.
+    // Fix: start muted (so it reliably autoplays), and drive play/mute
+    // entirely through our own #twitchControls button instead of expecting
+    // clicks to reach the embed directly.
+    let twitchPlayer = null;
+    let twitchMuted = true;
+
+    function updateTwitchControlsLabel() {
+      const btn = document.getElementById('twitchControls');
+      btn.textContent = twitchMuted ? '🔇 Unmute Stream' : '🔊 Mute Stream';
+    }
+
+    (function setupTwitchBackground() {
       if (!window.location.hostname) {
         console.warn('Twitch embed needs a real hostname (http/https) — opening this file directly (file://) will not work.');
         return;
       }
+      if (typeof Twitch === 'undefined') {
+        console.warn('Twitch embed script failed to load (blocked network/ad-blocker?) — skipping background stream.');
+        return;
+      }
 
-      const parentParams = parents.map(p => `parent=${encodeURIComponent(p)}`).join('&');
-      const twitchBg = document.getElementById('twitchBg');
-      twitchBg.src = `https://player.twitch.tv/?channel=${encodeURIComponent(TWITCH_CHANNEL)}&${parentParams}&muted=true&autoplay=true`;
+      const parents = [window.location.hostname];
+      // If you test locally alongside the deployed site, uncomment:
+      // parents.push('localhost');
+
+      twitchPlayer = new Twitch.Player('twitchBg', {
+        channel: TWITCH_CHANNEL,
+        parent: parents,
+        width: '100%',
+        height: '100%',
+        muted: true,
+        autoplay: true,
+        controls: false, // we drive playback with our own button below
+      });
+
+      const controlsBtn = document.getElementById('twitchControls');
+
+      twitchPlayer.addEventListener(Twitch.Player.READY, () => {
+        try { twitchPlayer.play(); } catch (e) { /* ignore */ }
+        controlsBtn.style.display = 'block';
+        updateTwitchControlsLabel();
+      });
+
+      controlsBtn.addEventListener('click', () => {
+        if (!twitchPlayer) return;
+        try { twitchPlayer.play(); } catch (e) { /* already playing, ignore */ }
+        twitchMuted = !twitchMuted;
+        twitchPlayer.setMuted(twitchMuted);
+        updateTwitchControlsLabel();
+      });
     })();
 
     // ---- Socket connection ---------------------------------------------------
