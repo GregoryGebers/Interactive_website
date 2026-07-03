@@ -31,18 +31,20 @@
       background: black;
     }
 
-    /* Twitch stream as BACKGROUND, fills the whole viewport. The Embed SDK
-       injects its own iframe inside this div (see script below) and sizes
-       it to 100%/100% to match. */
+    /* Twitch stream as BACKGROUND, fills the whole viewport. Starts with
+       pointer-events:none (game canvas above it gets all clicks/keys by
+       default) — the #twitchControls button toggles this and the canvas's
+       pointer-events in tandem so the player can be interacted with
+       directly when needed. */
     #twitchBg {
       position: absolute;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
+      border: 0;
       z-index: 0;
-      pointer-events: none; /* lets clicks/keys reach the game canvas above it;
-                                playback is controlled via #twitchControls instead */
+      pointer-events: none;
       overflow: hidden;
     }
 
@@ -212,22 +214,40 @@
       box-shadow: 3px 3px 0 var(--ink);
       z-index: 20;
     }
+
+    /* Shown on <body> while #twitchControls has handed clicks/keys to the
+       Twitch player, so it's obvious the game itself is temporarily not
+       receiving input. */
+    body.stream-interactive::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      border: 4px solid var(--gold);
+      box-shadow: inset 0 0 24px rgba(255, 193, 69, 0.5);
+      pointer-events: none;
+      z-index: 25;
+    }
   </style>
 </head>
 
 <body>
-  <!-- Twitch stream as BACKGROUND (same size as game, behind it). The Twitch
-       Embed SDK (loaded below) injects its own iframe into this div — using
-       the SDK instead of a raw <iframe src="..."> gives us a real .play()/
-       .setMuted() API so the #twitchControls button below can actually
-       control it. -->
-  <div id="twitchBg"></div>
+  <!-- Twitch stream as BACKGROUND (same size as game, behind it). Its src is
+       set dynamically in JS below so the required "parent" param always
+       matches whatever domain is actually serving this page. The `allow`
+       attribute is what actually grants this cross-origin iframe permission
+       to autoplay -- without it, browsers block autoplay here regardless of
+       the muted/autoplay URL params, silently, with no error to catch. -->
+  <iframe
+    id="twitchBg"
+    allow="autoplay; encrypted-media; picture-in-picture"
+    allowfullscreen="true">
+  </iframe>
 
   <canvas id="game"></canvas>
 
   <div id="connectionStatus" style="display:none;">Connecting...</div>
 
-  <button id="twitchControls" class="pixel-btn pixel-btn-small">▶ Play Stream</button>
+  <button id="twitchControls" class="pixel-btn pixel-btn-small">📺 Interact with Stream</button>
 
   <div id="loginOverlay">
     <div class="login-box">
@@ -241,7 +261,6 @@
     </div>
   </div>
 
-  <script src="https://player.twitch.tv/js/embed/v1.js"></script>
   <script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
   <script>
     // ---- Twitch background --------------------------------------------------
@@ -252,80 +271,42 @@
     // domain, or testing on localhost — no manual editing needed per-deploy.
     //
     // Change TWITCH_CHANNEL below to your actual channel name.
-    const TWITCH_CHANNEL = 'enokhan';
+    const TWITCH_CHANNEL = 'grian';
 
-    // Browsers only reliably autoplay muted video, which is why this starts
-    // muted. The #twitchControls button drives play/mute from here on.
-    //
-    // Previously this relied entirely on a Twitch.Player "ready" event to
-    // reveal the button and trigger .play() — if that event never fires for
-    // any reason (the SDK failing to load, a slow connection, an ad-blocker,
-    // or simply a bug), there was no fallback and the button just never
-    // showed up. It's rewritten below so the button is ALWAYS visible and
-    // ALWAYS does something on click: it lazily creates the player the first
-    // time it's needed (which is also a genuine user click, the most
-    // reliable way to satisfy autoplay/permission requirements) and retries
-    // creation if an earlier automatic attempt silently failed.
-    let twitchPlayer = null;
-    let twitchMuted = true;
-
-    function twitchParents() {
+    (function setupTwitchBackground() {
+      if (!window.location.hostname) {
+        console.warn('Twitch embed needs a real hostname (http/https) — opening this file directly (file://) will not work.');
+        return;
+      }
       const parents = [window.location.hostname];
       // If you test locally alongside the deployed site, uncomment:
       // parents.push('localhost');
-      return parents;
-    }
 
-    function createTwitchPlayer() {
-      if (twitchPlayer) return twitchPlayer; // already created
-      if (!window.location.hostname) {
-        console.warn('Twitch embed needs a real hostname (http/https) — opening this file directly (file://) will not work.');
-        return null;
-      }
-      if (typeof Twitch === 'undefined' || !Twitch.Player) {
-        console.warn('Twitch player script not available yet (blocked network/ad-blocker, or still loading).');
-        return null;
-      }
-      try {
-        twitchPlayer = new Twitch.Player('twitchBg', {
-          channel: TWITCH_CHANNEL,
-          parent: twitchParents(),
-          width: '100%',
-          height: '100%',
-          muted: true,
-          autoplay: true,
-          controls: false, // unreachable anyway (game canvas sits on top) — our own button drives playback
-        });
-        // Use the plain event-name string rather than a Twitch.Player.READY
-        // constant — more resilient to SDK/version differences.
-        twitchPlayer.addEventListener('ready', () => {
-          try { twitchPlayer.play(); } catch (e) { /* ignore */ }
-        });
-      } catch (e) {
-        console.warn('Failed to create Twitch player:', e);
-        twitchPlayer = null;
-      }
-      return twitchPlayer;
-    }
+      const parentParams = parents.map(p => `parent=${encodeURIComponent(p)}`).join('&');
+      const twitchBg = document.getElementById('twitchBg');
+      twitchBg.src = `https://player.twitch.tv/?channel=${encodeURIComponent(TWITCH_CHANNEL)}&${parentParams}&muted=true&autoplay=true`;
+    })();
 
-    function updateTwitchControlsLabel(text) {
-      document.getElementById('twitchControls').textContent = text;
-    }
-
-    // Try once automatically on load (script tag above is loaded
-    // synchronously before this runs, so Twitch should already be defined).
-    createTwitchPlayer();
-
-    document.getElementById('twitchControls').addEventListener('click', () => {
-      const p = twitchPlayer || createTwitchPlayer();
-      if (!p) {
-        updateTwitchControlsLabel('⚠ Stream unavailable — retry');
-        return;
-      }
-      try { p.play(); } catch (e) { /* ignore */ }
-      twitchMuted = !twitchMuted;
-      try { p.setMuted(twitchMuted); } catch (e) { /* ignore */ }
-      updateTwitchControlsLabel(twitchMuted ? '🔇 Unmute Stream' : '🔊 Mute Stream');
+    // Fallback that's always available regardless of whether autoplay
+    // worked: some things Twitch will never let a script click through on
+    // the viewer's behalf, by design — a mature-content consent gate, or a
+    // browser that's decided to block autoplay for this site entirely.
+    // Both require an actual click inside the Twitch player itself. Since
+    // the background layer sits under the game canvas with
+    // pointer-events:none (so the canvas can normally receive all clicks/
+    // keys), this button temporarily swaps that: canvas stops receiving
+    // clicks, the Twitch iframe starts receiving them, so its own native
+    // play button / consent screen / volume control can be clicked directly
+    // like a normal webpage. Click again to hand control back to the game.
+    let streamInteractive = false;
+    const twitchControlsBtn = document.getElementById('twitchControls');
+    twitchControlsBtn.addEventListener('click', () => {
+      streamInteractive = !streamInteractive;
+      canvas.style.pointerEvents = streamInteractive ? 'none' : 'auto';
+      document.getElementById('twitchBg').style.pointerEvents = streamInteractive ? 'auto' : 'none';
+      document.body.classList.toggle('stream-interactive', streamInteractive);
+      twitchControlsBtn.textContent = streamInteractive ? '🎮 Return to Game' : '📺 Interact with Stream';
+      if (!streamInteractive) canvas.focus();
     });
 
     // ---- Socket connection ---------------------------------------------------
