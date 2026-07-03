@@ -321,14 +321,14 @@
       for (const id in data) {
         if (id !== socket.id) {
           const p = data[id];
-          otherPlayers[id] = { ...p, renderX: p.x, renderY: p.y };
+          otherPlayers[id] = { ...p, renderX: p.x, renderY: p.y, lastUpdateAt: performance.now() };
         }
       }
     });
 
     socket.on("new-player", (data) => {
       if (data.id !== socket.id) {
-        otherPlayers[data.id] = { ...data, renderX: data.x, renderY: data.y };
+        otherPlayers[data.id] = { ...data, renderX: data.x, renderY: data.y, lastUpdateAt: performance.now() };
       }
     });
 
@@ -336,12 +336,14 @@
       if (data.id !== socket.id) {
         const existing = otherPlayers[data.id];
         if (existing) {
-          // Merge into the SAME object so renderX/renderY survive — this is
-          // what lets the interpolation keep easing toward the new target
-          // instead of snapping to it.
+          // Merge into the SAME object so renderX/renderY and the local
+          // animation state below survive — this is what lets the
+          // interpolation keep easing toward the new target instead of
+          // snapping to it.
           Object.assign(existing, data);
+          existing.lastUpdateAt = performance.now();
         } else {
-          otherPlayers[data.id] = { ...data, renderX: data.x, renderY: data.y };
+          otherPlayers[data.id] = { ...data, renderX: data.x, renderY: data.y, lastUpdateAt: performance.now() };
         }
       }
     });
@@ -360,6 +362,36 @@
         const p = otherPlayers[id];
         p.renderX += (p.x - p.renderX) * factor;
         p.renderY += (p.y - p.renderY) * factor;
+      }
+    }
+
+    // If another player's tab gets backgrounded, their browser throttles its
+    // requestAnimationFrame loop and stops sending fresh frameIndex values —
+    // without this, they'd freeze mid-animation on our screen too. Animate
+    // everyone's sprite locally instead, only taking emote/frameRow (facing
+    // direction) from the network, and falling back to idle if we haven't
+    // heard from them in a while.
+    const OTHER_PLAYER_FRAME_INTERVAL = 0.1; // seconds per animation frame
+    const OTHER_PLAYER_STALE_MS = 600;
+
+    function updateOtherPlayersAnimation(deltaTime) {
+      const now = performance.now();
+      for (const id in otherPlayers) {
+        const p = otherPlayers[id];
+        const stale = (now - (p.lastUpdateAt || 0)) > OTHER_PLAYER_STALE_MS;
+        const emote = stale ? 'idle' : (p.emote || 'idle');
+        const frameCount = emote === 'run' ? 8 : 6;
+
+        p.localFrameTimer = (p.localFrameTimer || 0) + deltaTime;
+        if (p.localFrameTimer >= OTHER_PLAYER_FRAME_INTERVAL) {
+          p.localFrameTimer -= OTHER_PLAYER_FRAME_INTERVAL;
+          p.localFrameIndex = ((p.localFrameIndex || 0) + 1) % frameCount;
+        }
+        if (!(p.localFrameIndex < frameCount)) p.localFrameIndex = 0;
+
+        p.displayEmote = emote;
+        p.displayFrameRow = emote === 'run' ? (p.frameRow ?? 3) : 0;
+        p.displayFrameIndex = p.localFrameIndex;
       }
     }
 
@@ -425,6 +457,7 @@
     function update(deltaTime) {
 
       updateOtherPlayersInterpolation(deltaTime);
+      updateOtherPlayersAnimation(deltaTime);
 
       frameTimer += deltaTime;
       if (frameTimer >= frameInterval) {
@@ -538,7 +571,6 @@
 
     const GROUND_GRASS_HEIGHT = 14;
     const GROUND_TILE_WIDTH = 40;
-    const BOX_GRASS_HEIGHT = 10;
 
     function drawGrassGround() {
       // The world floor at WORLD_HEIGHT is where players actually land
@@ -553,8 +585,6 @@
       drawGrassGround();
       for (const box of boxes) {
         playObj.drawImage(box_1_img, box.x-5, box.y-5, box.width +12, box.height +12);
-        // Grass topper so every floating platform reads as a little grassy ledge.
-        playObj.drawImage(grassImg, box.x-5, box.y-5, box.width +12, BOX_GRASS_HEIGHT);
       }
       if (coin != null) {
         playObj.drawImage(coinImg, coin.x, coin.y, 20, 20);
@@ -563,14 +593,14 @@
 
     function drawOtherPlayer(p) {
       const fw = 64, fh = 64;
-      const sprite = p.emote === "run" ? runImg : idleImg;
+      const sprite = p.displayEmote === "run" ? runImg : idleImg;
       const rx = p.renderX ?? p.x;
       const ry = p.renderY ?? p.y;
 
       playObj.drawImage(
         sprite,
-        (p.frameIndex || 0) * fw,
-        (p.frameRow || 0) * fh,
+        (p.displayFrameIndex || 0) * fw,
+        (p.displayFrameRow || 0) * fh,
         fw, fh,
         rx - 20, ry - 20,
         fw, fh

@@ -11,25 +11,29 @@
   const ctx = canvas.getContext('2d');
   const players = {};
 
+  const now0 = () => performance.now();
+
   socket.on("init", data => {
     for (const id in players) delete players[id];
     for (const id in data) {
       const p = data[id];
-      players[id] = { ...p, renderX: p.x, renderY: p.y };
+      players[id] = { ...p, renderX: p.x, renderY: p.y, lastUpdateAt: now0() };
     }
   });
   socket.on("new-player", data => {
-    players[data.id] = { ...data, renderX: data.x, renderY: data.y };
+    players[data.id] = { ...data, renderX: data.x, renderY: data.y, lastUpdateAt: now0() };
   });
   socket.on("player-move", data => {
     const existing = players[data.id];
     if (existing) {
       // Merge into the SAME object so renderX/renderY (the smoothed display
-      // position) survive — this is what lets the interpolation keep easing
-      // toward the new target instead of snapping straight to it.
+      // position) and the local animation state below survive — this is what
+      // lets the interpolation keep easing toward the new target instead of
+      // snapping straight to it.
       Object.assign(existing, data);
+      existing.lastUpdateAt = now0();
     } else {
-      players[data.id] = { ...data, renderX: data.x, renderY: data.y };
+      players[data.id] = { ...data, renderX: data.x, renderY: data.y, lastUpdateAt: now0() };
     }
   });
   socket.on("remove-player", id => delete players[id]);
@@ -109,7 +113,6 @@
   const WORLD_HEIGHT = 500;
   const GROUND_GRASS_HEIGHT = 14;
   const GROUND_TILE_WIDTH = 40;
-  const BOX_GRASS_HEIGHT = 10;
 
   // Players only send a position update ~30x/sec (see viewer.html's move
   // throttle), but this canvas redraws ~60x/sec. Snapping straight to each
@@ -129,6 +132,36 @@
     }
   }
 
+  // The sprite's walk/idle cycle used to just play whatever frameIndex the
+  // player's own browser tab last reported. When that tab is backgrounded
+  // (viewer switches away, minimizes, etc.), browsers throttle its
+  // requestAnimationFrame loop way down, so it stops sending fresh frames —
+  // and the overlay, which keeps redrawing at full rate, just kept painting
+  // that one stale frame forever, looking frozen.
+  //
+  // Fix: animate every player's sprite locally on a free-running timer here,
+  // independent of the network. We only take "emote" (idle/run) and
+  // "frameRow" (facing direction) from the network, and fall back to idle if
+  // we haven't heard from them in a while (covers the edge case of someone
+  // backgrounding their tab mid-run — otherwise they'd run in place forever).
+  const FRAME_INTERVAL = 0.1; // seconds per animation frame, matches viewer.html
+  const STALE_MS = 600; // no update in this long -> treat as idle
+
+  function updatePlayerAnimation(p, deltaTime) {
+    const stale = (performance.now() - (p.lastUpdateAt || 0)) > STALE_MS;
+    const emote = stale ? 'idle' : (p.emote || 'idle');
+    const frameCount = emote === 'run' ? 8 : 6;
+    const frameRow = emote === 'run' ? (p.frameRow ?? 3) : 0;
+
+    p.localFrameTimer = (p.localFrameTimer || 0) + deltaTime;
+    if (p.localFrameTimer >= FRAME_INTERVAL) {
+      p.localFrameTimer -= FRAME_INTERVAL;
+      p.localFrameIndex = ((p.localFrameIndex || 0) + 1) % frameCount;
+    }
+    if (!(p.localFrameIndex < frameCount)) p.localFrameIndex = 0; // guard if frameCount just shrank
+
+    return { emote, frameRow, frameIndex: p.localFrameIndex };
+  }
 
   function draw(currentTime) {
     const now = currentTime || performance.now();
@@ -146,16 +179,12 @@
         high_user = p.username;
       }
       const fw = 64, fh = 64;
-      let img = idleimg;
-      if (p.emote == "run") {
-        img = walkimg;
-      } else if(p.emote == "idle") {
-        img = idleimg;
-      }
+      const anim = updatePlayerAnimation(p, deltaTime);
+      const img = anim.emote === "run" ? walkimg : idleimg;
       ctx.drawImage(
       img,
-      p.frameIndex * fw, 
-      p.frameRow * fh,
+      anim.frameIndex * fw, 
+      anim.frameRow * fh,
       fw, fh,
       p.renderX - 20, p.renderY - 20,
       fw, fh
@@ -184,7 +213,6 @@
     }
     for (const box of boxes) {
       ctx.drawImage(boximg, box.x-5, box.y-5, box.width +12, box.height +12);
-      ctx.drawImage(grassImg, box.x-5, box.y-5, box.width +12, BOX_GRASS_HEIGHT);
     }
     if (coin != null) {
         ctx.drawImage(coinImg, coin.x, coin.y, 20, 20);
