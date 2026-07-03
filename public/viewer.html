@@ -3,13 +3,22 @@
 <head>
   <title>Control Your Character</title>
   <style>
-    /* ONLY background layering styles, no resizing */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: black;
+    }
+
+    /* Twitch stream as BACKGROUND, fills the whole viewport */
     #twitchBg {
       position: absolute;
       top: 0;
       left: 0;
-      width: 1000px;
-      height: 500px;
+      width: 100vw;
+      height: 100vh;
       border: 0;
       z-index: 0;
       pointer-events: none; /* lets you click/keyboard the game */
@@ -21,6 +30,32 @@
       left: 0;
       z-index: 5; /* above twitch */
       background: transparent;
+      display: block;
+    }
+
+    #loginOverlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 10;
+    }
+
+    #usernameInput {
+      font-size: 20px;
+      padding: 10px;
+      width: 60%;
+      max-width: 400px;
+    }
+
+    #usernameBtn {
+      font-size: 20px;
+      margin-left: 10px;
     }
   </style>
 </head>
@@ -34,21 +69,15 @@
     allowfullscreen="true">
   </iframe>
 
-  <canvas id="game" width="1000" height="500" style="border:1px solid black;"></canvas>
+  <canvas id="game"></canvas>
 
-  <div id="loginOverlay" 
-       style="position:absolute; top:0; left:1.1; width:1000px; height:500px;
-              display:flex; align-items:center; justify-content:center;
-              background:rgba(0,0,0,0.5); z-index:10;">
-    <input id="usernameInput" type="text" placeholder="Enter username" 
-           style="font-size:20px; padding:10px; width:60%;" />
-    <button id="usernameBtn" style="font-size:20px; margin-left:10px;">Go</button>
+  <div id="loginOverlay">
+    <input id="usernameInput" type="text" placeholder="Enter username" />
+    <button id="usernameBtn">Go</button>
   </div>
 
   <script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
   <script>
-    //"https://interactive-website-9620.onrender.com/socket.io/socket.io.js"
-    //"https://interactive-website-9620.onrender.com"
     const socket = io("https://interactive-website-9620.onrender.com");
 
     const box_1_img = new Image();
@@ -97,6 +126,30 @@
     const trampoline = canvas.getContext('2d');
     const playObj = canvas.getContext('2d');
 
+    // ---- Fixed "world" size the game logic/physics/box layout are tuned for.
+    // This MUST stay in sync with the box layout in overlay.html so the
+    // OBS overlay renders players in the right spots. We scale the *display*
+    // to fill the screen instead of changing these numbers.
+    const WORLD_WIDTH = 1000;
+    const WORLD_HEIGHT = 500;
+
+    let scale = 1;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      // Uniform scale so sprites don't stretch/distort; letterbox to center.
+      scale = Math.min(canvas.width / WORLD_WIDTH, canvas.height / WORLD_HEIGHT);
+      offsetX = (canvas.width - WORLD_WIDTH * scale) / 2;
+      offsetY = (canvas.height - WORLD_HEIGHT * scale) / 2;
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
     const boxes = [
       {x: 0, y: 400, width: 20, height: 20},
       {x: 80, y: 450, width: 20, height: 20},
@@ -143,6 +196,34 @@
       action: "idle",
       score: 0
     };
+
+    // ---- Other connected players, keyed by socket id ----
+    const otherPlayers = {};
+
+    socket.on("init", (data) => {
+      for (const id in data) {
+        if (id !== socket.id) {
+          otherPlayers[id] = data[id];
+        }
+      }
+    });
+
+    socket.on("new-player", (data) => {
+      if (data.id !== socket.id) {
+        otherPlayers[data.id] = data;
+      }
+    });
+
+    socket.on("player-move", (data) => {
+      if (data.id !== socket.id) {
+        otherPlayers[data.id] = data;
+      }
+    });
+
+    socket.on("remove-player", (id) => {
+      delete otherPlayers[id];
+    });
+
     let lastTime = performance.now();
     usernameprompt();
     function usernameprompt(){
@@ -178,6 +259,9 @@
     socket.on("coin", data => {
       coin = data;
       console.log("Coin received:", data.x, data.y);
+    });
+    socket.on("coin_taken", () => {
+      coin = null;
     });
     function update(deltaTime) {
 
@@ -253,8 +337,8 @@
         player.Yv += player.gravity*deltaTime;
         player.y += player.Yv *deltaTime;
       }
-      if (player.y + player.height >= canvas.height) {
-        player.y = canvas.height - player.height;
+      if (player.y + player.height >= WORLD_HEIGHT) {
+        player.y = WORLD_HEIGHT - player.height;
         player.Yv = 0;
         player.onGround = true;
       }
@@ -285,14 +369,13 @@
       if (player.x <= 0) {
         player.x = 0;
         player.Xv = 80;
-      } else if (player.x + player.width >= canvas.width) {
-        player.x = canvas.width - player.width;
+      } else if (player.x + player.width >= WORLD_WIDTH) {
+        player.x = WORLD_WIDTH - player.width;
         player.Xv = -80;
       }
     }
 
     function setObjects() {
-      playObj.clearRect(0, 0, canvas.width, canvas.height);
       for (const box of boxes) {
         playObj.drawImage(box_1_img, box.x-5, box.y-5, box.width +12, box.height +12);
       }
@@ -301,8 +384,41 @@
       }
     }
 
+    function drawOtherPlayer(p) {
+      const fw = 64, fh = 64;
+      const sprite = p.emote === "run" ? runImg : idleImg;
+
+      playObj.drawImage(
+        sprite,
+        (p.frameIndex || 0) * fw,
+        (p.frameRow || 0) * fh,
+        fw, fh,
+        p.x - 20, p.y - 20,
+        fw, fh
+      );
+
+      playObj.font = '16px Arial';
+      playObj.fillStyle = 'blue';
+      playObj.textAlign = 'center';
+      playObj.textBaseline = 'bottom';
+      playObj.fillText(p.username || '', p.x + 10, p.y - 5);
+    }
+
     function draw() {
+      // Clear the full physical canvas in raw pixel space first.
+      playObj.setTransform(1, 0, 0, 1, 0, 0);
+      playObj.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Everything below is drawn in "world" coordinates (0-1000 x 0-500),
+      // scaled + centered to fill the actual screen.
+      playObj.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+
       setObjects();
+
+      for (const id in otherPlayers) {
+        drawOtherPlayer(otherPlayers[id]);
+      }
+
       playObj.drawImage(
         img,
         animations.currentFrame * animations.frameWidth, 
@@ -316,9 +432,19 @@
       playObj.fillStyle = 'blue';
       playObj.textAlign = 'center';
       playObj.textBaseline = 'bottom';
-
       playObj.fillText(player.username, player.x + player.width/2, player.y - 5);
-      playObj.fillText("Current score: " + player.score, 0, 490);
+
+      // HUD text drawn in real screen space so it stays a fixed, readable size.
+      playObj.setTransform(1, 0, 0, 1, 0, 0);
+      playObj.font = 'bold 20px Arial';
+      playObj.textAlign = 'left';
+      playObj.textBaseline = 'alphabetic';
+      playObj.lineWidth = 4;
+      playObj.strokeStyle = 'black';
+      playObj.fillStyle = 'white';
+      playObj.strokeText("Score: " + player.score, 20, 30);
+      playObj.fillText("Score: " + player.score, 20, 30);
+
       socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action, score :player.score });
     }
 
@@ -379,13 +505,3 @@
   </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
