@@ -57,19 +57,34 @@
       font-size: 20px;
       margin-left: 10px;
     }
+
+    #connectionStatus {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      padding: 6px 12px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      border-radius: 4px;
+      z-index: 20;
+    }
   </style>
 </head>
 
 <body>
-  <!-- Twitch stream as BACKGROUND (same size as game, behind it) -->
-  <!-- IMPORTANT: Replace parent=YOUR_DOMAIN with the domain where this page is hosted -->
+  <!-- Twitch stream as BACKGROUND (same size as game, behind it). Its src is
+       set dynamically in JS below so the required "parent" param always
+       matches whatever domain is actually serving this page. -->
   <iframe
     id="twitchBg"
-    src="https://player.twitch.tv/?channel=eberhex&parent=interactive-website-9620.onrender.com&muted=true"
     allowfullscreen="true">
   </iframe>
 
   <canvas id="game"></canvas>
+
+  <div id="connectionStatus" style="display:none;">Connecting...</div>
 
   <div id="loginOverlay">
     <input id="usernameInput" type="text" placeholder="Enter username" />
@@ -78,7 +93,53 @@
 
   <script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
   <script>
-    const socket = io("https://interactive-website-9620.onrender.com");
+    // ---- Twitch background --------------------------------------------------
+    // Twitch requires a "parent" param that exactly matches the hostname the
+    // page is actually loaded from (no protocol, no port), or the embed just
+    // shows a "refused to connect" error. Building it from window.location
+    // means this keeps working whether you're on the Render URL, a custom
+    // domain, or testing on localhost — no manual editing needed per-deploy.
+    //
+    // Change TWITCH_CHANNEL below to your actual channel name.
+    const TWITCH_CHANNEL = 'eberhex';
+    (function setupTwitchBackground() {
+      const parents = [window.location.hostname];
+      // If you test locally alongside the deployed site, uncomment:
+      // parents.push('localhost');
+
+      if (!window.location.hostname) {
+        console.warn('Twitch embed needs a real hostname (http/https) — opening this file directly (file://) will not work.');
+        return;
+      }
+
+      const parentParams = parents.map(p => `parent=${encodeURIComponent(p)}`).join('&');
+      const twitchBg = document.getElementById('twitchBg');
+      twitchBg.src = `https://player.twitch.tv/?channel=${encodeURIComponent(TWITCH_CHANNEL)}&${parentParams}&muted=true&autoplay=true`;
+    })();
+
+    // ---- Socket connection ---------------------------------------------------
+    const socket = io("https://interactive-website-9620.onrender.com", {
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 10000, // tolerate a slow Render cold-start
+      timeout: 30000,
+    });
+
+    const connectionStatus = document.getElementById('connectionStatus');
+    connectionStatus.style.display = 'block'; // "Connecting..." until first connect
+
+    socket.on('connect', () => {
+      connectionStatus.style.display = 'none';
+    });
+    socket.on('disconnect', () => {
+      connectionStatus.textContent = 'Reconnecting...';
+      connectionStatus.style.display = 'block';
+    });
+    socket.io.on('reconnect_attempt', (attempt) => {
+      connectionStatus.textContent = `Reconnecting... (attempt ${attempt})`;
+      connectionStatus.style.display = 'block';
+    });
 
     const box_1_img = new Image();
     box_1_img.src = '/assets/obstacles/box_1.png';
@@ -201,6 +262,12 @@
     const otherPlayers = {};
 
     socket.on("init", (data) => {
+      // The server sends "init" on every connection, including reconnects.
+      // Clear first so anyone who left while we were disconnected doesn't
+      // linger as a ghost.
+      for (const id in otherPlayers) {
+        delete otherPlayers[id];
+      }
       for (const id in data) {
         if (id !== socket.id) {
           otherPlayers[id] = data[id];
@@ -234,9 +301,6 @@
       button.addEventListener('click', () => {
         const name = input.value.trim() || 'Player1';
         player.username = name;
-        socket.on('connect', () => {
-          socket.emit('new-player', { id: socket.id, name });
-        });
         overlay.style.display = 'none';
         canvas.focus();  // Return focus to canvas for key events
       });
@@ -255,6 +319,12 @@
     let frameTimer = 0;
     let animationStopper = false;
     const frameInterval = 0.1;
+
+    // draw() runs every animation frame (~60/sec). Broadcasting "move" that
+    // often per player adds up fast with several people connected. Capping
+    // it to ~30/sec is still smooth and roughly halves the socket traffic.
+    let lastMoveEmit = 0;
+    const MOVE_EMIT_INTERVAL_MS = 33;
     let coin = null;
     socket.on("coin", data => {
       coin = data;
@@ -445,7 +515,11 @@
       playObj.strokeText("Score: " + player.score, 20, 30);
       playObj.fillText("Score: " + player.score, 20, 30);
 
-      socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action, score :player.score });
+      const now = performance.now();
+      if (now - lastMoveEmit >= MOVE_EMIT_INTERVAL_MS) {
+        lastMoveEmit = now;
+        socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action, score :player.score });
+      }
     }
 
     canvas.addEventListener('keydown', e => {
