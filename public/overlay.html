@@ -174,7 +174,12 @@
     let high_user = "";
     for (const id in players) {
       const p = players[id];
-      if (p.score >= high_score) {
+      // Guard against any malformed/incomplete entry (e.g. a stale server
+      // version, or a mid-join race) ever hijacking the leaderboard display
+      // with a blank name or bogus score.
+      const validScore = typeof p.score === 'number' && Number.isFinite(p.score);
+      const validName = typeof p.username === 'string' && p.username.length > 0;
+      if (validScore && validName && p.score >= high_score) {
         high_score = p.score;
         high_user = p.username;
       }
@@ -195,15 +200,17 @@
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(p.username, p.renderX + 10, p.renderY - 5);
+    ctx.fillText(p.username || '', p.renderX + 10, p.renderY - 5);
     }
     requestAnimationFrame(draw);
-    ctx.font = 'bold 25px Arial';
-    ctx.fillStyle = 'white';
-    ctx.lineWidth=5;
-    ctx.strokeStyle = 'black';
-    ctx.strokeText("High Score: " + high_user + " -- " + high_score, 480, 520);
-    ctx.fillText("High Score: " + high_user + " -- " + high_score, 480, 520);
+    if (high_user) {
+      ctx.font = 'bold 25px Arial';
+      ctx.fillStyle = 'white';
+      ctx.lineWidth=5;
+      ctx.strokeStyle = 'black';
+      ctx.strokeText("High Score: " + high_user + " -- " + high_score, 480, 520);
+      ctx.fillText("High Score: " + high_user + " -- " + high_score, 480, 520);
+    }
   }
 
   function setObjects() {
