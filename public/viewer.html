@@ -227,7 +227,7 @@
 
   <div id="connectionStatus" style="display:none;">Connecting...</div>
 
-  <button id="twitchControls" class="pixel-btn pixel-btn-small" style="display:none;">▶ Play Stream</button>
+  <button id="twitchControls" class="pixel-btn pixel-btn-small">▶ Play Stream</button>
 
   <div id="loginOverlay">
     <div class="login-box">
@@ -241,7 +241,7 @@
     </div>
   </div>
 
-  <script src="https://embed.twitch.tv/embed/v1.js"></script>
+  <script src="https://player.twitch.tv/js/embed/v1.js"></script>
   <script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
   <script>
     // ---- Twitch background --------------------------------------------------
@@ -254,62 +254,79 @@
     // Change TWITCH_CHANNEL below to your actual channel name.
     const TWITCH_CHANNEL = 'Grian';
 
-    // Browsers only allow autoplay when a video starts muted (or after a
-    // real click), which is why it used to just sit there paused with an
-    // unclickable play button — the background div had pointer-events:none
-    // so the game canvas underneath could still receive clicks/keys, which
-    // meant Twitch's own play button was visually there but un-clickable.
-    // Fix: start muted (so it reliably autoplays), and drive play/mute
-    // entirely through our own #twitchControls button instead of expecting
-    // clicks to reach the embed directly.
+    // Browsers only reliably autoplay muted video, which is why this starts
+    // muted. The #twitchControls button drives play/mute from here on.
+    //
+    // Previously this relied entirely on a Twitch.Player "ready" event to
+    // reveal the button and trigger .play() — if that event never fires for
+    // any reason (the SDK failing to load, a slow connection, an ad-blocker,
+    // or simply a bug), there was no fallback and the button just never
+    // showed up. It's rewritten below so the button is ALWAYS visible and
+    // ALWAYS does something on click: it lazily creates the player the first
+    // time it's needed (which is also a genuine user click, the most
+    // reliable way to satisfy autoplay/permission requirements) and retries
+    // creation if an earlier automatic attempt silently failed.
     let twitchPlayer = null;
     let twitchMuted = true;
 
-    function updateTwitchControlsLabel() {
-      const btn = document.getElementById('twitchControls');
-      btn.textContent = twitchMuted ? '🔇 Unmute Stream' : '🔊 Mute Stream';
-    }
-
-    (function setupTwitchBackground() {
-      if (!window.location.hostname) {
-        console.warn('Twitch embed needs a real hostname (http/https) — opening this file directly (file://) will not work.');
-        return;
-      }
-      if (typeof Twitch === 'undefined') {
-        console.warn('Twitch embed script failed to load (blocked network/ad-blocker?) — skipping background stream.');
-        return;
-      }
-
+    function twitchParents() {
       const parents = [window.location.hostname];
       // If you test locally alongside the deployed site, uncomment:
       // parents.push('localhost');
+      return parents;
+    }
 
-      twitchPlayer = new Twitch.Player('twitchBg', {
-        channel: TWITCH_CHANNEL,
-        parent: parents,
-        width: '100%',
-        height: '100%',
-        muted: true,
-        autoplay: true,
-        controls: false, // we drive playback with our own button below
-      });
+    function createTwitchPlayer() {
+      if (twitchPlayer) return twitchPlayer; // already created
+      if (!window.location.hostname) {
+        console.warn('Twitch embed needs a real hostname (http/https) — opening this file directly (file://) will not work.');
+        return null;
+      }
+      if (typeof Twitch === 'undefined' || !Twitch.Player) {
+        console.warn('Twitch player script not available yet (blocked network/ad-blocker, or still loading).');
+        return null;
+      }
+      try {
+        twitchPlayer = new Twitch.Player('twitchBg', {
+          channel: TWITCH_CHANNEL,
+          parent: twitchParents(),
+          width: '100%',
+          height: '100%',
+          muted: true,
+          autoplay: true,
+          controls: false, // unreachable anyway (game canvas sits on top) — our own button drives playback
+        });
+        // Use the plain event-name string rather than a Twitch.Player.READY
+        // constant — more resilient to SDK/version differences.
+        twitchPlayer.addEventListener('ready', () => {
+          try { twitchPlayer.play(); } catch (e) { /* ignore */ }
+        });
+      } catch (e) {
+        console.warn('Failed to create Twitch player:', e);
+        twitchPlayer = null;
+      }
+      return twitchPlayer;
+    }
 
-      const controlsBtn = document.getElementById('twitchControls');
+    function updateTwitchControlsLabel(text) {
+      document.getElementById('twitchControls').textContent = text;
+    }
 
-      twitchPlayer.addEventListener(Twitch.Player.READY, () => {
-        try { twitchPlayer.play(); } catch (e) { /* ignore */ }
-        controlsBtn.style.display = 'block';
-        updateTwitchControlsLabel();
-      });
+    // Try once automatically on load (script tag above is loaded
+    // synchronously before this runs, so Twitch should already be defined).
+    createTwitchPlayer();
 
-      controlsBtn.addEventListener('click', () => {
-        if (!twitchPlayer) return;
-        try { twitchPlayer.play(); } catch (e) { /* already playing, ignore */ }
-        twitchMuted = !twitchMuted;
-        twitchPlayer.setMuted(twitchMuted);
-        updateTwitchControlsLabel();
-      });
-    })();
+    document.getElementById('twitchControls').addEventListener('click', () => {
+      const p = twitchPlayer || createTwitchPlayer();
+      if (!p) {
+        updateTwitchControlsLabel('⚠ Stream unavailable — retry');
+        return;
+      }
+      try { p.play(); } catch (e) { /* ignore */ }
+      twitchMuted = !twitchMuted;
+      try { p.setMuted(twitchMuted); } catch (e) { /* ignore */ }
+      updateTwitchControlsLabel(twitchMuted ? '🔇 Unmute Stream' : '🔊 Mute Stream');
+    });
 
     // ---- Socket connection ---------------------------------------------------
     const socket = io("https://interactive-website-9620.onrender.com", {
