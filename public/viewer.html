@@ -49,13 +49,44 @@
     #usernameInput {
       font-size: 20px;
       padding: 10px;
-      width: 60%;
-      max-width: 400px;
+      width: 220px;
     }
 
     #usernameBtn {
       font-size: 20px;
       margin-left: 10px;
+    }
+
+    #loginOverlay .login-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      background: rgba(20, 20, 20, 0.6);
+      padding: 24px 30px;
+      border-radius: 10px;
+    }
+
+    #loginOverlay .login-row {
+      display: flex;
+      align-items: center;
+    }
+
+    #loginOverlay label {
+      color: white;
+      font-family: Arial, sans-serif;
+      font-size: 15px;
+      margin-right: 8px;
+    }
+
+    #usernameColor {
+      width: 44px;
+      height: 34px;
+      padding: 0;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      background: none;
     }
 
     #connectionStatus {
@@ -87,8 +118,16 @@
   <div id="connectionStatus" style="display:none;">Connecting...</div>
 
   <div id="loginOverlay">
-    <input id="usernameInput" type="text" placeholder="Enter username" />
-    <button id="usernameBtn">Go</button>
+    <div class="login-box">
+      <div class="login-row">
+        <input id="usernameInput" type="text" placeholder="Enter username" />
+        <button id="usernameBtn">Go</button>
+      </div>
+      <div class="login-row">
+        <label for="usernameColor">Name color:</label>
+        <input id="usernameColor" type="color" value="#1e3fff" />
+      </div>
+    </div>
   </div>
 
   <script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
@@ -168,6 +207,12 @@
     const coinImg = new Image();
     coinImg.src = '/assets/obstacles/coin.png';
     coinImg.onload = () => {
+      requestAnimationFrame(gameLoop);
+    }
+
+    const grassImg = new Image();
+    grassImg.src = '/assets/obstacles/grass.png';
+    grassImg.onload = () => {
       requestAnimationFrame(gameLoop);
     }
 
@@ -254,6 +299,7 @@
       running : false,
       jumping: false,
       username: "",
+      color: "#1e3fff",
       action: "idle",
       score: 0
     };
@@ -297,10 +343,12 @@
       const overlay = document.getElementById('loginOverlay');
       const input = document.getElementById('usernameInput');
       const button = document.getElementById('usernameBtn');
+      const colorInput = document.getElementById('usernameColor');
 
       button.addEventListener('click', () => {
         const name = input.value.trim() || 'Player1';
         player.username = name;
+        player.color = colorInput.value || '#1e3fff';
         overlay.style.display = 'none';
         canvas.focus();  // Return focus to canvas for key events
       });
@@ -445,9 +493,25 @@
       }
     }
 
+    const GROUND_GRASS_HEIGHT = 14;
+    const GROUND_TILE_WIDTH = 40;
+    const BOX_GRASS_HEIGHT = 10;
+
+    function drawGrassGround() {
+      // The world floor at WORLD_HEIGHT is where players actually land
+      // (see the ground-collision check in update()) but had no visual
+      // representation before — tile the grass strip across it.
+      for (let x = 0; x < WORLD_WIDTH; x += GROUND_TILE_WIDTH) {
+        playObj.drawImage(grassImg, x, WORLD_HEIGHT - GROUND_GRASS_HEIGHT, GROUND_TILE_WIDTH, GROUND_GRASS_HEIGHT);
+      }
+    }
+
     function setObjects() {
+      drawGrassGround();
       for (const box of boxes) {
         playObj.drawImage(box_1_img, box.x-5, box.y-5, box.width +12, box.height +12);
+        // Grass topper so every floating platform reads as a little grassy ledge.
+        playObj.drawImage(grassImg, box.x-5, box.y-5, box.width +12, BOX_GRASS_HEIGHT);
       }
       if (coin != null) {
         playObj.drawImage(coinImg, coin.x, coin.y, 20, 20);
@@ -468,7 +532,7 @@
       );
 
       playObj.font = '16px Arial';
-      playObj.fillStyle = 'blue';
+      playObj.fillStyle = p.color || 'blue';
       playObj.textAlign = 'center';
       playObj.textBaseline = 'bottom';
       playObj.fillText(p.username || '', p.x + 10, p.y - 5);
@@ -499,7 +563,7 @@
       );
 
       playObj.font = '16px Arial';
-      playObj.fillStyle = 'blue';
+      playObj.fillStyle = player.color || 'blue';
       playObj.textAlign = 'center';
       playObj.textBaseline = 'bottom';
       playObj.fillText(player.username, player.x + player.width/2, player.y - 5);
@@ -518,7 +582,7 @@
       const now = performance.now();
       if (now - lastMoveEmit >= MOVE_EMIT_INTERVAL_MS) {
         lastMoveEmit = now;
-        socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action, score :player.score });
+        socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, color:player.color, emote: player.action, score :player.score });
       }
     }
 
@@ -553,7 +617,7 @@
         }
       }
 
-      socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action });
+      socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, color:player.color, emote: player.action });
       draw();
     });
 
@@ -571,7 +635,7 @@
         }
       }
 
-      socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, emote: player.action });
+      socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, color:player.color, emote: player.action });
       draw();
     });
 

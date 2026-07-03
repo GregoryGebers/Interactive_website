@@ -11,6 +11,10 @@
   const ctx = canvas.getContext('2d');
   const players = {};
 
+  socket.on("init", data => {
+    for (const id in players) delete players[id];
+    for (const id in data) players[id] = data[id];
+  });
   socket.on("new-player", data => players[data.id] = data);
   socket.on("player-move", data => players[data.id] = data);
   socket.on("remove-player", id => delete players[id]);
@@ -31,6 +35,12 @@
   const coinImg = new Image();
   coinImg.src = '/assets/obstacles/coin.png';
   coinImg.onload = () => {
+    requestAnimationFrame(draw);
+  }
+
+  const grassImg = new Image();
+  grassImg.src = '/assets/obstacles/grass.png';
+  grassImg.onload = () => {
     requestAnimationFrame(draw);
   }
 
@@ -76,6 +86,15 @@
     {x: 980, y: 380, width: 20, height: 20},
 
   ];
+
+  // Same fixed "world" the viewer.html physics/box layout use. The overlay
+  // canvas is a different pixel size (1920x1080) than that world (1000x500),
+  // so these constants are only used for the ground-grass strip below.
+  const WORLD_WIDTH = 1000;
+  const WORLD_HEIGHT = 500;
+  const GROUND_GRASS_HEIGHT = 14;
+  const GROUND_TILE_WIDTH = 40;
+  const BOX_GRASS_HEIGHT = 10;
     
 
 
@@ -107,7 +126,7 @@
     );
 
     ctx.font = '16px Arial';
-    ctx.fillStyle = 'blue';
+    ctx.fillStyle = p.color || 'blue';
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
@@ -124,8 +143,12 @@
 
   function setObjects() {
     ctx.clearRect(0, 0, canvas.width,canvas.height);
+    for (let x = 0; x < WORLD_WIDTH; x += GROUND_TILE_WIDTH) {
+      ctx.drawImage(grassImg, x, WORLD_HEIGHT - GROUND_GRASS_HEIGHT, GROUND_TILE_WIDTH, GROUND_GRASS_HEIGHT);
+    }
     for (const box of boxes) {
       ctx.drawImage(boximg, box.x-5, box.y-5, box.width +12, box.height +12);
+      ctx.drawImage(grassImg, box.x-5, box.y-5, box.width +12, BOX_GRASS_HEIGHT);
     }
     if (coin != null) {
         ctx.drawImage(coinImg, coin.x, coin.y, 20, 20);

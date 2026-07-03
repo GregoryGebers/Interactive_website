@@ -73,6 +73,8 @@ let currentCoin = pickRandomCoin();
 const WORLD_WIDTH = 1000;
 const WORLD_HEIGHT = 500;
 const MAX_USERNAME_LENGTH = 20;
+const DEFAULT_USERNAME_COLOR = '#1e3fff';
+const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 
 // Sockets that disconnected recently are kept around for a grace period
 // before we actually remove them, so a quick reconnect doesn't flash a
@@ -93,6 +95,10 @@ function sanitizeMoveData(data) {
     ? data.username.slice(0, MAX_USERNAME_LENGTH)
     : '';
 
+  const color = typeof data.color === 'string' && HEX_COLOR_RE.test(data.color)
+    ? data.color
+    : DEFAULT_USERNAME_COLOR;
+
   return {
     x: Math.min(Math.max(x, 0), WORLD_WIDTH),
     y: Math.min(Math.max(y, 0), WORLD_HEIGHT),
@@ -100,6 +106,7 @@ function sanitizeMoveData(data) {
     frameIndex: Number.isFinite(Number(data.frameIndex)) ? Number(data.frameIndex) : 0,
     frameRow: Number.isFinite(Number(data.frameRow)) ? Number(data.frameRow) : 0,
     username,
+    color,
     emote: typeof data.emote === 'string' ? data.emote : 'idle',
     score: Number.isFinite(Number(data.score)) ? Number(data.score) : 0,
   };
@@ -116,7 +123,7 @@ io.on('connection', (socket) => {
   // If this connection was recovered, don't stomp on the player's existing
   // state (position/score) with a fresh default.
   if (!socket.recovered || !players[socket.id]) {
-    players[socket.id] = { x: 100, y: 100, emote: 'idle', score: 0 };
+    players[socket.id] = { x: 100, y: 100, emote: 'idle', score: 0, color: DEFAULT_USERNAME_COLOR };
   }
 
   // Cancel any pending removal for this id — they're back.
