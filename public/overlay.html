@@ -276,12 +276,15 @@
   // factor is applied to Y so sprites keep their proportions instead of
   // getting squashed.
   const WORLD_WIDTH = 3000;
-  const WORLD_HEIGHT = 700;
+  const WORLD_HEIGHT = 500;
   const GROUND_GRASS_HEIGHT = 14;
   const GROUND_TILE_WIDTH = 40;
 
   // 1920 / 3000 = 0.64 — every world unit is 0.64 overlay pixels.
   const WORLD_SCALE = canvas.width / WORLD_WIDTH;
+
+// Push the rendered world down so jumping players/chat do not get cut off at the top.
+const WORLD_OFFSET_Y = 100;
 
   // Players only send a position update ~30x/sec (see viewer.html's move
   // throttle), but this canvas redraws ~60x/sec. Snapping straight to each
@@ -422,7 +425,7 @@
       ctx.fillStyle = p.color || 'blue';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
-      ctx.fillText(p.username || '', (p.renderX + 10) * WORLD_SCALE, (p.renderY - 5) * WORLD_SCALE);
+      ctx.fillText(p.username || '', (p.renderX + 10) * WORLD_SCALE, WORLD_OFFSET_Y + (p.renderY - 5) * WORLD_SCALE);
     }
 
     // Chat bubbles on top of every sprite/name, so they're never hidden
@@ -431,7 +434,7 @@
     for (const id in players) {
       const p = players[id];
       if (p.chatMessage && nowMs < p.chatExpiresAt) {
-        drawChatBubble(ctx, p.chatMessage, (p.renderX + 10) * WORLD_SCALE, (p.renderY - 22) * WORLD_SCALE);
+        drawChatBubble(ctx, p.chatMessage, (p.renderX + 10) * WORLD_SCALE, WORLD_OFFSET_Y + (p.renderY - 22) * WORLD_SCALE);
       }
     }
 
@@ -447,7 +450,7 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       const hsX = canvas.width / 2;
-      const hsY = WORLD_HEIGHT * WORLD_SCALE + 5;
+      const hsY = WORLD_OFFSET_Y + WORLD_HEIGHT * WORLD_SCALE + 25;
       ctx.strokeText("High Score: " + high_user + " -- " + high_score, hsX, hsY);
       ctx.fillText("High Score: " + high_user + " -- " + high_score, hsX, hsY);
     }
@@ -459,7 +462,7 @@
     // overlay always shows everything.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.setTransform(WORLD_SCALE, 0, 0, WORLD_SCALE, 0, 0);
+    ctx.setTransform(WORLD_SCALE, 0, 0, WORLD_SCALE, 0, WORLD_OFFSET_Y);
 
     for (let x = 0; x < WORLD_WIDTH; x += GROUND_TILE_WIDTH) {
       ctx.drawImage(grassImg, x, WORLD_HEIGHT - GROUND_GRASS_HEIGHT, GROUND_TILE_WIDTH, GROUND_GRASS_HEIGHT);
