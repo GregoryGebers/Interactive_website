@@ -300,6 +300,7 @@
   <div id="loginOverlay">
     <div class="login-box">
       <p class="login-title">JOIN THE GAME</p>
+      <p id="loginMessage" class="hint" style="display:none; color: var(--gold); margin: 0;"></p>
       <div class="login-row">
         <input id="usernameInput" type="text" placeholder="Username" maxlength="20" />
         <input id="usernameColor" type="color" value="#1e3fff" title="Name color" />
@@ -737,6 +738,21 @@
       }
     }
 
+    // The server removes characters that haven't actually moved (or chatted)
+    // in a while, so idle slimes don't clutter the stream/overlay. When that
+    // happens to US, bring the join screen back with a note — one click on
+    // GO re-joins with the same name and color.
+    socket.on('afk-removed', () => {
+      hasJoined = false;
+      if (chatOpen) closeChat();
+      player.chatMessage = null;
+      const overlay = document.getElementById('loginOverlay');
+      const msg = document.getElementById('loginMessage');
+      msg.textContent = 'Removed after 2 minutes of inactivity — jump back in!';
+      msg.style.display = 'block';
+      overlay.style.display = 'flex';
+    });
+
     // Only sent once a username has actually been chosen — this is what the
     // server uses to decide whether a socket should get a visible character
     // at all, so a spectator-only connection (like overlay.html) never spawns
@@ -764,6 +780,7 @@
         player.color = colorInput.value || '#1e3fff';
         hasJoined = true;
         sendJoin();
+        document.getElementById('loginMessage').style.display = 'none';
         overlay.style.display = 'none';
         canvas.focus();  // Return focus to canvas for key events
       });
@@ -807,80 +824,9 @@
         frameTimer = 0;
       }
 
-      for (const box of boxes) {
-
-        const onBottom = 
-          player.y - player.height <= box.y - 1 && 
-          player.x + player.width > box.x &&
-          player.x < box.x + box.width &&
-          player.y > box.y;
-
-        const onTop = 
-          player.x + player.width > box.x &&
-          player.x < box.x + box.width &&
-          player.y + player.height <= box.y  &&
-          player.y + player.height + player.Yv * deltaTime >= box.y;
-
-        const LeftSide =
-          player.x + player.width >= box.x &&
-          player.x + player.width <= box.x + box.width &&
-          player.y + 4 <= box.y + box.height &&
-          player.y  + player.height -1 >= box.y;  
-
-        const RightSide = 
-          player.x  <= box.x + box.width &&
-          player.x  >= box.x  &&
-          player.y  + 4 <= box.y + box.height &&
-          player.y  + player.height - 1 >= box.y; 
-
-        if (onTop) {
-          player.y = box.y - player.height;
-          player.Yv = 0;
-          player.onGround = true;
-          break;
-        } else if (!onTop) {
-          player.onGround = false;
-        }
-
-        if(onBottom) {
-          player.Yv = 10;
-        }
-
-        if (LeftSide) {
-          player.Xv = -80;
-        }
-        if (RightSide) {
-          player.Xv = 80;
-        }
-      }
-
-      if (coin != null) {
-        let coin_touching = 
-          player.x < coin.x + 10 &&
-          player.x + player.width > coin.x &&
-          player.y < coin.y + 10 &&
-          player.y + player.height > coin.y
-
-        if (coin_touching) {
-          console.log("recieved a coin");
-          coin = null;
-          player.score++;
-          socket.emit("coin_taken");
-        }
-      }
-
-      if(!player.onGround) {
-        player.Yv += player.gravity*deltaTime;
-        player.y += player.Yv *deltaTime;
-      }
-      if (player.y + player.height >= WORLD_HEIGHT) {
-        player.y = WORLD_HEIGHT - player.height;
-        player.Yv = 0;
-        player.onGround = true;
-      }
-
-      if(player.onGround) {
-        if(player.jumping) {
+      // ---- Ground-state logic (uses last frame's onGround result) ----
+      if (player.onGround) {
+        if (player.jumping) {
           player.Yforce += deltaTime;
         }
         if (player.Xv >= -29 && player.Xv <= 29 && player.running == false) {
@@ -894,20 +840,177 @@
             animationStopper = true;
           }
         }
-        if(player.running == false && player.Xv > 0) {
+        if (player.running == false && player.Xv > 0) {
           player.Xv -= player.friction*deltaTime;
         } else if (player.running == false && player.Xv < 0){
           player.Xv += player.friction*deltaTime;
         }
       }
+
+      // =====================================================================
+      // Collision, rewritten to be clip-proof. The old code checked all four
+      // sides of a box in one pass and, on side hits, only ever adjusted
+      // VELOCITY — never position. Push into a box for a couple of frames
+      // (or clip a corner during a fast fall) and you could end a frame
+      // genuinely inside it, where none of the side checks made sense any
+      // more, and you'd slide through.
+      //
+      // New approach, the standard platformer fix:
+      //   1. Move ONE AXIS AT A TIME (X fully resolved, then Y).
+      //   2. Detect hits by SWEPT checks — "was I on this side of the face
+      //      before the move, and past it after?" — which can't tunnel at
+      //      high speed the way pure overlap checks can.
+      //   3. On a hit, CLAMP POSITION to the face that was crossed, so a
+      //      frame can never end inside a box.
+      //   4. Keep a depenetration fallback that pushes out through the
+      //      nearest face if some weird prior state left us overlapping.
+      // =====================================================================
+
+      // ---- X axis: integrate, then resolve against box left/right faces ----
+      const prevX = player.x;
       player.x += player.Xv*deltaTime;
 
+      // Resolving against one box can push you into an adjacent one that
+      // the loop already passed — so repeat until nothing moves (2 passes
+      // covers every box chain in this level; 3 is a safety cap).
+      for (let resolvePass = 0; resolvePass < 3; resolvePass++) {
+        let movedX = false;
+        for (const box of boxes) {
+          // Standing exactly on top (y+height === box.y) is NOT vertical
+          // overlap, so walking across the seam of two adjacent boxes never
+          // snags on the next box's side face.
+          const verticalOverlap =
+            player.y + player.height > box.y &&
+            player.y < box.y + box.height;
+          if (!verticalOverlap) continue;
+
+          const nowIntersectsX =
+            player.x + player.width > box.x &&
+            player.x < box.x + box.width;
+          if (!nowIntersectsX) continue;
+
+          const wasLeftOf = prevX + player.width <= box.x;
+          const wasRightOf = prevX >= box.x + box.width;
+
+          if (wasLeftOf) {
+            // Crossed the left face this frame — clamp to it, bounce away
+            // (same knock-back feel the old side hits had).
+            player.x = box.x - player.width;
+            player.Xv = -80;
+          } else if (wasRightOf) {
+            player.x = box.x + box.width;
+            player.Xv = 80;
+          } else {
+            // Already overlapping before the move (bad prior state): push out
+            // through whichever face is closest instead of letting it fester.
+            const pushLeft = (player.x + player.width) - box.x;
+            const pushRight = (box.x + box.width) - player.x;
+            if (pushLeft <= pushRight) {
+              player.x = box.x - player.width;
+              player.Xv = Math.min(player.Xv, -80);
+            } else {
+              player.x = box.x + box.width;
+              player.Xv = Math.max(player.Xv, 80);
+            }
+          }
+          movedX = true;
+        }
+        if (!movedX) break;
+      }
+
+      // World bounds (X) — same bounce-back as before.
       if (player.x <= 0) {
         player.x = 0;
         player.Xv = 80;
       } else if (player.x + player.width >= WORLD_WIDTH) {
         player.x = WORLD_WIDTH - player.width;
         player.Xv = -80;
+      }
+
+      // ---- Y axis: integrate gravity, then resolve tops/undersides ----
+      const prevY = player.y;
+      if (!player.onGround) {
+        player.Yv += player.gravity*deltaTime;
+      }
+      player.y += player.Yv*deltaTime;
+
+      player.onGround = false; // recomputed below from actual contacts
+
+      for (let resolvePass = 0; resolvePass < 3; resolvePass++) {
+        let movedY = false;
+        for (const box of boxes) {
+          const horizontalOverlap =
+            player.x + player.width > box.x &&
+            player.x < box.x + box.width;
+          if (!horizontalOverlap) continue;
+
+          const wasAbove = prevY + player.height <= box.y;
+          const wasBelow = prevY >= box.y + box.height;
+
+          if (player.Yv >= 0 && wasAbove && player.y + player.height >= box.y) {
+            // Landed on top. Swept: we were above the top face and are now at
+            // or past it — even if a fast fall carried us clear past the whole
+            // box in one frame, this still catches it (no tunneling). The >=
+            // comparisons also hold true while standing still, which is what
+            // keeps a stationary player grounded frame after frame.
+            if (player.y !== box.y - player.height) movedY = true;
+            player.y = box.y - player.height;
+            player.Yv = 0;
+            player.onGround = true;
+          } else if (player.Yv < 0 && wasBelow && player.y < box.y + box.height) {
+            // Bonked the underside mid-jump.
+            player.y = box.y + box.height;
+            player.Yv = 10;
+            movedY = true;
+          } else if (
+            player.y + player.height > box.y &&
+            player.y < box.y + box.height
+          ) {
+            // Depenetration fallback for ANY leftover intersection the swept
+            // branches didn't claim. This genuinely happens: bonking the
+            // underside of one box can clamp you into a diagonally adjacent
+            // box whose "was I above/below it?" answers don't match either
+            // swept branch. Exit via the nearest face; on a tie, exit in the
+            // direction you're already moving so the correction doesn't
+            // fight the motion.
+            const pushUp = (player.y + player.height) - box.y;
+            const pushDown = (box.y + box.height) - player.y;
+            const preferUp = pushUp < pushDown || (pushUp === pushDown && player.Yv <= 0);
+            if (preferUp) {
+              player.y = box.y - player.height;
+              if (player.Yv > 0) player.Yv = 0;
+              player.onGround = true;
+            } else {
+              player.y = box.y + box.height;
+              if (player.Yv < 0) player.Yv = 10;
+            }
+            movedY = true;
+          }
+        }
+        if (!movedY) break;
+      }
+
+      // World floor.
+      if (player.y + player.height >= WORLD_HEIGHT) {
+        player.y = WORLD_HEIGHT - player.height;
+        player.Yv = 0;
+        player.onGround = true;
+      }
+
+      // ---- Coin pickup (position is final for this frame at this point) ----
+      if (coin != null) {
+        let coin_touching = 
+          player.x < coin.x + 10 &&
+          player.x + player.width > coin.x &&
+          player.y < coin.y + 10 &&
+          player.y + player.height > coin.y
+
+        if (coin_touching) {
+          console.log("recieved a coin");
+          coin = null;
+          player.score++;
+          socket.emit("coin_taken");
+        }
       }
     }
 
