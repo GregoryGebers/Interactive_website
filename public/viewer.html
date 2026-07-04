@@ -434,12 +434,21 @@
     const trampoline = canvas.getContext('2d');
     const playObj = canvas.getContext('2d');
 
-    // ---- Fixed "world" size the game logic/physics/box layout are tuned for.
-    // This MUST stay in sync with the box layout in overlay.html so the
-    // OBS overlay renders players in the right spots. We scale the *display*
-    // to fill the screen instead of changing these numbers.
-    const WORLD_WIDTH = 1000;
+    // ---- World vs view --------------------------------------------------
+    // The WORLD is now wider than what's on screen: 3000 world units across,
+    // three "screens" of playable level. The VIEW is the fixed-size window
+    // the player sees at any moment (one screen's worth), and it's the view
+    // — not the world — that gets scaled up to fill the browser window.
+    // WORLD_WIDTH/HEIGHT and the box layout MUST stay in sync with
+    // overlay.html (and the coin spots in server.js).
+    const WORLD_WIDTH = 3000;
     const WORLD_HEIGHT = 500;
+    const VIEW_WIDTH = 1000;   // world units visible horizontally at once
+    const VIEW_HEIGHT = 500;   // full world height is always visible
+
+    // Horizontal camera. Follows the player, clamped so it never shows past
+    // the world's left or right edge. Y never moves — vertical is fixed.
+    let cameraX = 0;
 
     let scale = 1;
     let offsetX = 0;
@@ -450,9 +459,10 @@
       canvas.height = window.innerHeight;
 
       // Uniform scale so sprites don't stretch/distort; letterbox to center.
-      scale = Math.min(canvas.width / WORLD_WIDTH, canvas.height / WORLD_HEIGHT);
-      offsetX = (canvas.width - WORLD_WIDTH * scale) / 2;
-      offsetY = (canvas.height - WORLD_HEIGHT * scale) / 2;
+      // Scale is based on the VIEW (the visible window), not the world.
+      scale = Math.min(canvas.width / VIEW_WIDTH, canvas.height / VIEW_HEIGHT);
+      offsetX = (canvas.width - VIEW_WIDTH * scale) / 2;
+      offsetY = (canvas.height - VIEW_HEIGHT * scale) / 2;
     }
 
     window.addEventListener('resize', resizeCanvas);
@@ -484,6 +494,50 @@
       {x: 860, y: 380, width: 20, height: 20},
 
       {x: 980, y: 380, width: 20, height: 20},
+
+      // ---- Extended world: second screen (1000-2000) ----
+      {x: 1060, y: 440, width: 20, height: 20},
+      {x: 1080, y: 440, width: 20, height: 20},
+      {x: 1160, y: 400, width: 20, height: 20},
+      {x: 1240, y: 360, width: 20, height: 20},
+      {x: 1260, y: 360, width: 20, height: 20},
+      {x: 1350, y: 440, width: 20, height: 20},
+      {x: 1370, y: 440, width: 20, height: 20},
+      {x: 1390, y: 440, width: 20, height: 20},
+      {x: 1380, y: 340, width: 20, height: 20},
+      {x: 1400, y: 340, width: 20, height: 20},
+      {x: 1500, y: 400, width: 20, height: 20},
+      {x: 1520, y: 400, width: 20, height: 20},
+      {x: 1600, y: 340, width: 20, height: 20},
+      {x: 1660, y: 380, width: 20, height: 20},
+      {x: 1680, y: 380, width: 20, height: 20},
+      {x: 1780, y: 460, width: 20, height: 20},
+      {x: 1780, y: 440, width: 20, height: 20},
+      {x: 1780, y: 420, width: 20, height: 20},
+      {x: 1860, y: 400, width: 20, height: 20},
+      {x: 1880, y: 400, width: 20, height: 20},
+      {x: 1960, y: 360, width: 20, height: 20},
+
+      // ---- Extended world: third screen (2000-3000) ----
+      {x: 2040, y: 440, width: 20, height: 20},
+      {x: 2060, y: 440, width: 20, height: 20},
+      {x: 2140, y: 400, width: 20, height: 20},
+      {x: 2220, y: 360, width: 20, height: 20},
+      {x: 2240, y: 360, width: 20, height: 20},
+      {x: 2320, y: 420, width: 20, height: 20},
+      {x: 2400, y: 460, width: 20, height: 20},
+      {x: 2420, y: 460, width: 20, height: 20},
+      {x: 2440, y: 460, width: 20, height: 20},
+      {x: 2420, y: 440, width: 20, height: 20},
+      {x: 2540, y: 400, width: 20, height: 20},
+      {x: 2620, y: 360, width: 20, height: 20},
+      {x: 2640, y: 360, width: 20, height: 20},
+      {x: 2720, y: 420, width: 20, height: 20},
+      {x: 2740, y: 420, width: 20, height: 20},
+      {x: 2840, y: 380, width: 20, height: 20},
+      {x: 2900, y: 440, width: 20, height: 20},
+      {x: 2920, y: 440, width: 20, height: 20},
+      {x: 2980, y: 400, width: 20, height: 20},
     ];
     const player = {
       x: 100,
@@ -643,11 +697,11 @@
     });
 
     // Keep the composer hovering above your character. World coords ->
-    // screen coords using the same scale/offset the canvas draws with, so
-    // it stays glued to the slime across window sizes and letterboxing.
+    // screen coords using the same scale/offset/camera the canvas draws
+    // with, so it stays glued to the slime while the view scrolls.
     function positionChatInput() {
       if (!chatOpen) return;
-      const screenX = offsetX + (player.x + player.width / 2) * scale;
+      const screenX = offsetX + (player.x + player.width / 2 - cameraX) * scale;
       const screenY = offsetY + (player.y - 30) * scale;
       chatInputWrap.style.left = `${screenX}px`;
       chatInputWrap.style.top = `${screenY}px`;
@@ -997,6 +1051,12 @@
         player.onGround = true;
       }
 
+      // ---- Camera: follow the player horizontally, clamped to the world ----
+      // Centered on the player, but never allowed to show past either edge:
+      // cameraX lives in [0, WORLD_WIDTH - VIEW_WIDTH]. X only — Y is fixed.
+      cameraX = player.x + player.width / 2 - VIEW_WIDTH / 2;
+      cameraX = Math.max(0, Math.min(cameraX, WORLD_WIDTH - VIEW_WIDTH));
+
       // ---- Coin pickup (position is final for this frame at this point) ----
       if (coin != null) {
         let coin_touching = 
@@ -1063,9 +1123,13 @@
       playObj.setTransform(1, 0, 0, 1, 0, 0);
       playObj.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Everything below is drawn in "world" coordinates (0-1000 x 0-500),
-      // scaled + centered to fill the actual screen.
-      playObj.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+      // Everything below is drawn in WORLD coordinates. The transform bakes
+      // in three things at once: the view scale, the letterbox offset, and
+      // the camera — subtracting cameraX*scale means every world-space
+      // drawImage/fillText below is effectively rendered at
+      // (worldX - cameraX), which is what makes the view scroll. Y has no
+      // camera term: vertical is fixed.
+      playObj.setTransform(scale, 0, 0, scale, offsetX - cameraX * scale, offsetY);
 
       setObjects();
 
