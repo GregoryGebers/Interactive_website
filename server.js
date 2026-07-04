@@ -344,7 +344,7 @@ const pendingRemoval = {};
 
 // A player can only be told apart from garbage/attack traffic if we validate
 // what comes in on "move" before trusting it.
-function sanitizeMoveData(data) {
+function sanitizeMoveData(data, existingPlayer = null) {
   if (!data || typeof data !== 'object') return null;
 
   const x = Number(data.x);
@@ -359,6 +359,13 @@ function sanitizeMoveData(data) {
     ? data.color
     : DEFAULT_USERNAME_COLOR;
 
+  // Score is owned by the server and is only changed in the coin_taken
+  // handler. Some viewer.html move packets do not include score at all
+  // (for example keydown/keyup emits), and previously those packets were
+  // sanitised back to 0, causing the overlay to flicker between the real
+  // score and 0. Keep the existing server score during movement updates.
+  const existingScore = Number(existingPlayer && existingPlayer.score);
+
   return {
     x: Math.min(Math.max(x, 0), WORLD_WIDTH),
     y: Math.min(Math.max(y, 0), WORLD_HEIGHT),
@@ -368,7 +375,7 @@ function sanitizeMoveData(data) {
     username,
     color,
     emote: typeof data.emote === 'string' ? data.emote : 'idle',
-    score: Number.isFinite(Number(data.score)) ? Number(data.score) : 0,
+    score: Number.isFinite(existingScore) ? existingScore : 0,
   };
 }
 
@@ -453,9 +460,22 @@ io.on('connection', (socket) => {
 
   socket.on('coin_taken', () => {
     try {
+      const taker = players[socket.id];
+      if (!taker) return; // spectator connections cannot take coins
       if (currentCoin === null) return; // already taken by someone else
+
+      // Keep score server-side so regular movement packets cannot reset it
+      // and edited clients cannot lower/overwrite it.
+      const currentScore = Number(taker.score);
+      taker.score = (Number.isFinite(currentScore) ? currentScore : 0) + 1;
+
       currentCoin = null;
       socket.broadcast.emit('coin_taken');
+
+      // Immediately broadcast the updated score so overlay.html does not wait
+      // for the next movement packet before showing the new value.
+      io.emit('player-move', { id: socket.id, ...taker });
+
       setTimeout(() => {
         currentCoin = pickRandomCoin();
         io.emit('coin', currentCoin);
@@ -510,8 +530,10 @@ io.on('connection', (socket) => {
       if (!attacker) return; // spectators can't swing
 
       const now = Date.now();
-      if (lastSwingAt[socket.id] &&
-          now - lastSwingAt[socket.id] < SWING_COOLDOWN_MS - SWING_COOLDOWN_TOLERANCE_MS) {
+      if (
+        lastSwingAt[socket.id] &&
+        now - lastSwingAt[socket.id] < SWING_COOLDOWN_MS - SWING_COOLDOWN_TOLERANCE_MS
+      ) {
         return; // still on cooldown — drop silently
       }
       lastSwingAt[socket.id] = now;
@@ -555,7 +577,7 @@ io.on('connection', (socket) => {
       }
       lastMoveAt[socket.id] = now;
 
-      const clean = sanitizeMoveData(data);
+      const clean = sanitizeMoveData(data, players[socket.id]);
       if (!clean) {
         console.warn(`[move] dropped malformed payload from ${socket.id}`);
         return;
@@ -647,6 +669,7 @@ function shutdown(signal) {
   // Force-exit if it hangs
   setTimeout(() => process.exit(1), 10000).unref();
 }
+
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 

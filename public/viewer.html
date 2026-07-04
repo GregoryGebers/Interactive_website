@@ -344,7 +344,7 @@
 
   <div id="connectionStatus" style="display:none;">Connecting...</div>
 
-  <button id="twitchControls" class="pixel-btn pixel-btn-small">📺 Interact with Stream</button>
+  <button id="twitchControls" class="pixel-btn pixel-btn-small">Interact with Stream</button>
 
   <!-- Private chat composer — hidden until you press T in-game. -->
   <div id="chatInputWrap">
@@ -373,7 +373,7 @@
         <br><br>
         When chatting, turn on <b>SAY IN TWITCH CHAT?</b> to send your message to Twitch chat too.
         <br><br>
-        Use <b>📺 Interact with Stream</b> in the top-right to control the stream background.
+        Use <b>Interact with Stream</b> in the top-right to control the stream background.
         Then press play in the center of the stream to start it.
       </p>
     </div>
@@ -443,7 +443,7 @@
       canvas.style.pointerEvents = streamInteractive ? 'none' : 'auto';
       document.getElementById('twitchBg').style.pointerEvents = streamInteractive ? 'auto' : 'none';
       document.body.classList.toggle('stream-interactive', streamInteractive);
-      twitchControlsBtn.textContent = streamInteractive ? '🎮 Return to Game' : '📺 Interact with Stream';
+      twitchControlsBtn.textContent = streamInteractive ? 'Return to Game' : 'Interact with Stream';
       if (!streamInteractive) canvas.focus();
     });
 
