@@ -365,7 +365,7 @@
         <input id="usernameColor" type="color" value="#1e3fff" title="Name color" />
       </div>
       <button id="usernameBtn" class="pixel-btn">GO</button>
-      <p class="hint"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to move · <kbd>T</kbd> to chat</p>
+      <p class="hint"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to move · <kbd>T</kbd> to chat · <kbd>SPACE</kbd> to swing</p>
     </div>
   </div>
 
@@ -496,6 +496,11 @@
     grassImg.onload = () => {
       requestAnimationFrame(gameLoop);
     }
+
+    // Bat sprite is drawn VERTICALLY (grip at the bottom) — the swing code
+    // rotates it around the grip, so image-up = where the bat points.
+    const batImg = new Image();
+    batImg.src = '/assets/obstacles/bat.png';
 
     let img = idleImg
     const animations = {
@@ -638,7 +643,9 @@
       action: "idle",
       score: 0,
       chatMessage: null,
-      chatExpiresAt: 0
+      chatExpiresAt: 0,
+      facing: 1,        // 1 = right, -1 = left; last direction actually run
+      swingStartAt: 0   // performance.now() when the current bat swing began
     };
 
     // ---- Other connected players, keyed by socket id ----
@@ -831,6 +838,74 @@
         otherPlayers[data.id].chatExpiresAt = expiresAt;
       }
     });
+
+    // ---- Bat swing -------------------------------------------------------
+    // Space swings a bat from low-behind to high-forward in the direction
+    // you're facing, on a 2 second cooldown. The server does the real hit
+    // detection: anyone in the swing radius gets launched upward at 45
+    // degrees with ~3/4 of a max jump's force. The client cooldown here is
+    // just responsiveness — the server enforces its own copy, so editing
+    // this number locally doesn't let anyone spam hits.
+    const SWING_COOLDOWN_MS = 2000;
+    const SWING_DURATION_MS = 250; // how long the visual swipe takes
+    let lastSwingTriedAt = -Infinity;
+
+    function trySwing() {
+      const now = performance.now();
+      if (now - lastSwingTriedAt < SWING_COOLDOWN_MS) return; // still cooling down
+      lastSwingTriedAt = now;
+      player.swingStartAt = now;
+      socket.emit('swing', { dir: player.facing });
+    }
+
+    // Other players' swings arrive as an event (the server broadcasts them)
+    // and animate locally, exactly like their run/idle sprites do.
+    socket.on('player-swing', (data) => {
+      if (!data || data.id === socket.id) return;
+      const p = otherPlayers[data.id];
+      if (!p) return;
+      p.swingStartAt = performance.now();
+      p.swingDir = Number(data.dir) === -1 ? -1 : 1;
+    });
+
+    // YOU got hit: the server computed the 45-degree launch velocity, and
+    // since each browser is authoritative over its own character, applying
+    // it here is what actually sends you flying (the normal move broadcasts
+    // then carry the new position to everyone else).
+    socket.on('knockback', (data) => {
+      if (!data) return;
+      const vx = Number(data.vx);
+      const vy = Number(data.vy);
+      if (!Number.isFinite(vx) || !Number.isFinite(vy)) return;
+      player.Xv = vx;
+      player.Yv = vy;
+      player.onGround = false; // airborne now — gravity takes over
+      player.jumping = false;  // cancel any half-charged jump
+    });
+
+    // Draws one bat mid-swing, rotated around the character's center (the
+    // grip). progress 0 -> bat low behind-forward, progress 1 -> pointing
+    // up-forward: a bottom-to-top swipe on the facing side. scale(dir, 1)
+    // mirrors the whole arc for left-facing swings.
+    const BAT_DRAW_W = 9;
+    const BAT_DRAW_H = 26;
+    const SWING_START_ANGLE = 2.4;   // radians clockwise from straight-up (~137deg, low)
+    const SWING_END_ANGLE = -0.35;   // slightly past vertical (~-20deg, high)
+
+    function drawBatSwing(ctx, cx, cy, dir, progress) {
+      if (!batImg.complete || !batImg.naturalWidth) return; // image not loaded yet
+      const t = Math.min(Math.max(progress, 0), 1);
+      // Ease-out so the swipe starts fast and finishes soft, like a real swing.
+      const eased = 1 - (1 - t) * (1 - t);
+      const angle = SWING_START_ANGLE + (SWING_END_ANGLE - SWING_START_ANGLE) * eased;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(dir, 1);
+      ctx.rotate(angle);
+      // Grip at the pivot, barrel extending "up" in local space.
+      ctx.drawImage(batImg, -BAT_DRAW_W / 2, -BAT_DRAW_H, BAT_DRAW_W, BAT_DRAW_H);
+      ctx.restore();
+    }
 
     // ---- Pixel speech bubble rendering (canvas, world space) ----
     const CHAT_FONT = '8px "Press Start 2P", monospace';
@@ -1262,6 +1337,33 @@
       playObj.textBaseline = 'bottom';
       playObj.fillText(player.username, player.x + player.width/2, player.y - 5);
 
+      // Bat swings: drawn over sprites (the bat passes in front of the
+      // character) but under chat bubbles. Each swing renders for
+      // SWING_DURATION_MS after it started, driven by its own clock, so
+      // everyone sees the same bottom-to-top swipe regardless of frame rate.
+      const swingNow = performance.now();
+      for (const id in otherPlayers) {
+        const p = otherPlayers[id];
+        if (p.swingStartAt && swingNow - p.swingStartAt < SWING_DURATION_MS) {
+          drawBatSwing(
+            playObj,
+            (p.renderX ?? p.x) + 10,  // other-player sprite center (matches name offset)
+            (p.renderY ?? p.y) + 10,
+            p.swingDir || 1,
+            (swingNow - p.swingStartAt) / SWING_DURATION_MS
+          );
+        }
+      }
+      if (player.swingStartAt && swingNow - player.swingStartAt < SWING_DURATION_MS) {
+        drawBatSwing(
+          playObj,
+          player.x + player.width / 2,
+          player.y + player.height / 2,
+          player.facing,
+          (swingNow - player.swingStartAt) / SWING_DURATION_MS
+        );
+      }
+
       // Chat bubbles go on top of sprites and usernames, drawn in the same
       // world space so they scale with everything else.
       const nowMs = performance.now();
@@ -1324,8 +1426,18 @@
         return;
       }
 
+      // Space swings the bat (2s cooldown, enforced in trySwing and again
+      // server-side). preventDefault stops the browser's default
+      // space-scrolls-the-page behavior.
+      if (key === ' ' && hasJoined) {
+        e.preventDefault();
+        trySwing();
+        return;
+      }
+
       if (RIGHT_KEYS.has(key) && player.onGround) {
         player.action = "run";
+        player.facing = 1;
         if (player.running == false){
           img = runImg;
           animations.currentFrame = 0;
@@ -1338,6 +1450,7 @@
       }
       if (LEFT_KEYS.has(key) && player.onGround) {
         player.action = "run";
+        player.facing = -1;
         if (player.running == false){
           img = runImg;
           animations.currentFrame = 0;
