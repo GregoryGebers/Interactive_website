@@ -44,7 +44,15 @@
       // position) and the local animation state below survive — this is what
       // lets the interpolation keep easing toward the new target instead of
       // snapping straight to it.
+      const previousScore = Number(existing.score);
+      const incomingScore = Number(data.score);
       Object.assign(existing, data);
+      // Scores only go up during a session. This prevents a bad/stale packet
+      // from briefly drawing the high score as 0 on the overlay.
+      existing.score = Math.max(
+        Number.isFinite(previousScore) ? previousScore : 0,
+        Number.isFinite(incomingScore) ? incomingScore : 0
+      );
       existing.lastUpdateAt = now0();
     } else {
       players[data.id] = { ...data, renderX: data.x, renderY: data.y, lastUpdateAt: now0() };
