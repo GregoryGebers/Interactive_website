@@ -164,6 +164,77 @@ function censorChatMessage(message) {
     .join(' ');
 }
 
+// ---- StreamElements bot relay ----------------------------------------------
+// A player who toggled "Say in Twitch chat?" on gets their (already-filtered)
+// message echoed into the real Twitch channel chat by your StreamElements
+// bot. This uses ONE credential — yours — so no player ever has to log into
+// Twitch. Everything the bot says is prefixed with the player's in-game name
+// so chat knows who it came from.
+//
+// Set these as environment variables on Render (Settings -> Environment);
+// treat the JWT like a password — it must live ONLY on the server:
+//   SE_JWT_TOKEN   -> "Show secrets" at
+//                     https://streamelements.com/dashboard/account/channels
+//   SE_CHANNEL_ID  -> your SE account/channel id (from the /channels/me id)
+//
+// Requires Node's built-in fetch (Node 18+). If your service pins an older
+// Node, `npm install node-fetch` and import it here instead.
+const SE_JWT_TOKEN = process.env.SE_JWT_TOKEN || '';
+const SE_CHANNEL_ID = process.env.SE_CHANNEL_ID || '';
+const SE_SAY_URL = SE_CHANNEL_ID
+  ? `https://api.streamelements.com/kappa/v2/bot/${SE_CHANNEL_ID}/say`
+  : null;
+
+// Twitch caps a single non-mod account near 20 messages / 30s. Since every
+// relayed message rides on your one bot account, funnel them through a small
+// queue so a burst of players can't trip that limit and get the bot blocked.
+const TWITCH_RELAY_MIN_INTERVAL_MS = 1600; // ~18 msgs / 30s, safely under
+const twitchRelayQueue = [];
+let twitchRelayTimer = null;
+
+function pumpTwitchRelay() {
+  if (twitchRelayTimer) return;
+  const next = twitchRelayQueue.shift();
+  if (!next) return;
+  sendToStreamElements(next).finally(() => {
+    twitchRelayTimer = setTimeout(() => {
+      twitchRelayTimer = null;
+      pumpTwitchRelay();
+    }, TWITCH_RELAY_MIN_INTERVAL_MS);
+  });
+}
+
+async function sendToStreamElements(message) {
+  if (!SE_SAY_URL || !SE_JWT_TOKEN) {
+    console.warn('[twitch-relay] SE_JWT_TOKEN / SE_CHANNEL_ID not set — skipping relay.');
+    return;
+  }
+  try {
+    const res = await fetch(SE_SAY_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SE_JWT_TOKEN}`,
+      },
+      body: JSON.stringify({ message }),
+    });
+    if (!res.ok) {
+      console.error(`[twitch-relay] SE say failed: ${res.status} ${await res.text().catch(() => '')}`);
+    }
+  } catch (err) {
+    console.error('[twitch-relay] SE say error:', err);
+  }
+}
+
+// Twitch messages cap at 500 chars; our game messages are already <=100, but
+// the name prefix + a little safety margin keeps us well clear.
+function relayToTwitch(username, cleanMessage) {
+  const name = (username && username.trim()) ? username.trim() : 'anon';
+  const line = `${name}: ${cleanMessage}`.slice(0, 480);
+  twitchRelayQueue.push(line);
+  pumpTwitchRelay();
+}
+
 // ---- Game state ------------------------------------------------------------
 let players = {};
 
@@ -363,6 +434,12 @@ io.on('connection', (socket) => {
       // rest of the room sees.
       message = censorChatMessage(message);
       io.emit('chat', { id: socket.id, message });
+
+      // If the player toggled "Say in Twitch chat?" on, relay the SAME
+      // censored text into the real channel chat via the StreamElements bot.
+      if (data.toTwitch === true) {
+        relayToTwitch(players[socket.id].username, message);
+      }
     } catch (err) {
       console.error(`[chat] error from ${socket.id}:`, err);
     }
