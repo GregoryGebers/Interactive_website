@@ -202,15 +202,64 @@
     
     {x: 980, y: 380, width: 20, height: 20},
 
+    // ---- Extended world: second screen (1000-2000) ----
+    {x: 1060, y: 440, width: 20, height: 20},
+    {x: 1080, y: 440, width: 20, height: 20},
+    {x: 1160, y: 400, width: 20, height: 20},
+    {x: 1240, y: 360, width: 20, height: 20},
+    {x: 1260, y: 360, width: 20, height: 20},
+    {x: 1350, y: 440, width: 20, height: 20},
+    {x: 1370, y: 440, width: 20, height: 20},
+    {x: 1390, y: 440, width: 20, height: 20},
+    {x: 1380, y: 340, width: 20, height: 20},
+    {x: 1400, y: 340, width: 20, height: 20},
+    {x: 1500, y: 400, width: 20, height: 20},
+    {x: 1520, y: 400, width: 20, height: 20},
+    {x: 1600, y: 340, width: 20, height: 20},
+    {x: 1660, y: 380, width: 20, height: 20},
+    {x: 1680, y: 380, width: 20, height: 20},
+    {x: 1780, y: 460, width: 20, height: 20},
+    {x: 1780, y: 440, width: 20, height: 20},
+    {x: 1780, y: 420, width: 20, height: 20},
+    {x: 1860, y: 400, width: 20, height: 20},
+    {x: 1880, y: 400, width: 20, height: 20},
+    {x: 1960, y: 360, width: 20, height: 20},
+
+    // ---- Extended world: third screen (2000-3000) ----
+    {x: 2040, y: 440, width: 20, height: 20},
+    {x: 2060, y: 440, width: 20, height: 20},
+    {x: 2140, y: 400, width: 20, height: 20},
+    {x: 2220, y: 360, width: 20, height: 20},
+    {x: 2240, y: 360, width: 20, height: 20},
+    {x: 2320, y: 420, width: 20, height: 20},
+    {x: 2400, y: 460, width: 20, height: 20},
+    {x: 2420, y: 460, width: 20, height: 20},
+    {x: 2440, y: 460, width: 20, height: 20},
+    {x: 2420, y: 440, width: 20, height: 20},
+    {x: 2540, y: 400, width: 20, height: 20},
+    {x: 2620, y: 360, width: 20, height: 20},
+    {x: 2640, y: 360, width: 20, height: 20},
+    {x: 2720, y: 420, width: 20, height: 20},
+    {x: 2740, y: 420, width: 20, height: 20},
+    {x: 2840, y: 380, width: 20, height: 20},
+    {x: 2900, y: 440, width: 20, height: 20},
+    {x: 2920, y: 440, width: 20, height: 20},
+    {x: 2980, y: 400, width: 20, height: 20},
   ];
 
-  // Same fixed "world" the viewer.html physics/box layout use. The overlay
-  // canvas is a different pixel size (1920x1080) than that world (1000x500),
-  // so these constants are only used for the ground-grass strip below.
-  const WORLD_WIDTH = 1000;
+  // Same fixed "world" the viewer.html physics/box layout use — now 3000
+  // wide (three screens). Unlike viewer.html, the overlay has NO camera:
+  // it always shows the ENTIRE world at once by scaling world coordinates
+  // down to fit the canvas width. Vertical stays fixed; the same uniform
+  // factor is applied to Y so sprites keep their proportions instead of
+  // getting squashed.
+  const WORLD_WIDTH = 3000;
   const WORLD_HEIGHT = 500;
   const GROUND_GRASS_HEIGHT = 14;
   const GROUND_TILE_WIDTH = 40;
+
+  // 1920 / 3000 = 0.64 — every world unit is 0.64 overlay pixels.
+  const WORLD_SCALE = canvas.width / WORLD_WIDTH;
 
   // Players only send a position update ~30x/sec (see viewer.html's move
   // throttle), but this canvas redraws ~60x/sec. Snapping straight to each
@@ -267,7 +316,9 @@
     lastFrameTime = now;
 
     updatePlayerInterpolation(deltaTime);
-    setObjects();
+    setObjects(); // leaves the world-scale transform active
+
+    // ---- Pass 1: sprites, in scaled WORLD space ----
     let high_score = -1;
     let high_user = "";
     for (const id in players) {
@@ -285,20 +336,28 @@
       const anim = updatePlayerAnimation(p, deltaTime);
       const img = anim.emote === "run" ? walkimg : idleimg;
       ctx.drawImage(
-      img,
-      anim.frameIndex * fw, 
-      anim.frameRow * fh,
-      fw, fh,
-      p.renderX - 20, p.renderY - 20,
-      fw, fh
-    );
+        img,
+        anim.frameIndex * fw,
+        anim.frameRow * fh,
+        fw, fh,
+        p.renderX - 20, p.renderY - 20,
+        fw, fh
+      );
+    }
 
-    ctx.font = '16px Arial';
-    ctx.fillStyle = p.color || 'blue';
+    // ---- Pass 2: text, in SCREEN space ----
+    // Names and chat bubbles are drawn at scaled positions but full pixel
+    // size — at WORLD_SCALE (0.64) a world-space 16px name would be ~10px
+    // and bubble text ~5px, unreadable on stream.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(p.username || '', p.renderX + 10, p.renderY - 5);
+    for (const id in players) {
+      const p = players[id];
+      ctx.font = '16px Arial';
+      ctx.fillStyle = p.color || 'blue';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(p.username || '', (p.renderX + 10) * WORLD_SCALE, (p.renderY - 5) * WORLD_SCALE);
     }
 
     // Chat bubbles on top of every sprite/name, so they're never hidden
@@ -307,23 +366,36 @@
     for (const id in players) {
       const p = players[id];
       if (p.chatMessage && nowMs < p.chatExpiresAt) {
-        drawChatBubble(ctx, p.chatMessage, p.renderX + 10, p.renderY - 22);
+        drawChatBubble(ctx, p.chatMessage, (p.renderX + 10) * WORLD_SCALE, (p.renderY - 22) * WORLD_SCALE);
       }
     }
 
     requestAnimationFrame(draw);
     if (high_user) {
+      // Centered under the scaled world (which is WORLD_HEIGHT*WORLD_SCALE
+      // pixels tall), instead of the old hardcoded spot tuned for the
+      // unscaled 1000x500 layout.
       ctx.font = 'bold 20px Arial';
       ctx.fillStyle = 'white';
-      ctx.lineWidth=5;
+      ctx.lineWidth = 5;
       ctx.strokeStyle = 'black';
-      ctx.strokeText("High Score: " + high_user + " -- " + high_score, 480, 520);
-      ctx.fillText("High Score: " + high_user + " -- " + high_score, 480, 520);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      const hsX = canvas.width / 2;
+      const hsY = WORLD_HEIGHT * WORLD_SCALE + 14;
+      ctx.strokeText("High Score: " + high_user + " -- " + high_score, hsX, hsY);
+      ctx.fillText("High Score: " + high_user + " -- " + high_score, hsX, hsY);
     }
   }
 
   function setObjects() {
-    ctx.clearRect(0, 0, canvas.width,canvas.height);
+    // Clear in raw pixel space, then switch into scaled world space so the
+    // ENTIRE 3000-wide world maps onto the canvas — no cameraX here, the
+    // overlay always shows everything.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(WORLD_SCALE, 0, 0, WORLD_SCALE, 0, 0);
+
     for (let x = 0; x < WORLD_WIDTH; x += GROUND_TILE_WIDTH) {
       ctx.drawImage(grassImg, x, WORLD_HEIGHT - GROUND_GRASS_HEIGHT, GROUND_TILE_WIDTH, GROUND_GRASS_HEIGHT);
     }
