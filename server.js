@@ -181,6 +181,29 @@ const coins = [
   { x: 645, y: 340 },
   { x: 815, y: 380 },
   { x: 980, y: 360 },
+
+  // ---- Extended world: second screen (1000-2000) ----
+  { x: 1070, y: 420 },
+  { x: 1160, y: 380 },
+  { x: 1250, y: 340 },
+  { x: 1390, y: 320 },
+  { x: 1510, y: 380 },
+  { x: 1600, y: 320 },
+  { x: 1780, y: 400 },
+  { x: 1870, y: 380 },
+  { x: 1960, y: 340 },
+
+  // ---- Extended world: third screen (2000-3000) ----
+  { x: 2050, y: 420 },
+  { x: 2140, y: 380 },
+  { x: 2230, y: 340 },
+  { x: 2420, y: 420 },
+  { x: 2540, y: 380 },
+  { x: 2630, y: 340 },
+  { x: 2730, y: 400 },
+  { x: 2840, y: 360 },
+  { x: 2910, y: 420 },
+  { x: 2980, y: 380 },
 ];
 
 function pickRandomCoin() {
@@ -192,7 +215,11 @@ function pickRandomCoin() {
 // coin (and moving it) for every already-playing client.
 let currentCoin = pickRandomCoin();
 
-const WORLD_WIDTH = 1000;
+// Must match viewer.html/overlay.html. CRITICAL: sanitizeMoveData clamps
+// every reported position to these bounds — if this lags behind the client
+// world size, players walking past the old edge get silently pinned there
+// on everyone else's screen.
+const WORLD_WIDTH = 3000;
 const WORLD_HEIGHT = 500;
 const MAX_USERNAME_LENGTH = 20;
 const DEFAULT_USERNAME_COLOR = '#1e3fff';
