@@ -28,9 +28,47 @@ const io = new Server(server, {
 // Serve static files from the 'public' directory
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ---- Host selection --------------------------------------------------------
+// Two people can run this game over their own stream: eberhex and izu_kora.
+// A SINGLE Render env var, isEberhex, flips EVERYTHING to the right host at
+// once — no code edits, no per-host files:
+//   - which StreamElements bot (JWT + channel id) relays chat, and
+//   - which Twitch channel viewer.html shows as the background.
+//
+// Set BOTH hosts' credentials once (see the env var names below), then just
+// toggle isEberhex between deploys to switch who's hosting.
+//
+// Render env vars are always strings, so "true" (any capitalization) counts
+// as true; anything else — including unset — falls back to izu_kora.
+const IS_EBERHEX = String(process.env.isEberhex).toLowerCase() === 'true';
+
+const HOSTS = {
+  eberhex: {
+    twitchChannel: 'eberhex',
+    seJwtToken: process.env.SE_JWT_TOKEN_EBERHEX || '',
+    seChannelId: process.env.SE_CHANNEL_ID_EBERHEX || '',
+  },
+  izu_kora: {
+    twitchChannel: 'izu_kora',
+    seJwtToken: process.env.SE_JWT_TOKEN_IZU || '',
+    seChannelId: process.env.SE_CHANNEL_ID_IZU || '',
+  },
+};
+
+const activeHost = IS_EBERHEX ? HOSTS.eberhex : HOSTS.izu_kora;
+console.log(`[host] active host: ${activeHost.twitchChannel} (isEberhex=${IS_EBERHEX})`);
+
 // Optional: Define a route for the root URL
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'viewer.html'));
+});
+
+// Tells viewer.html which Twitch channel to embed as the background. The
+// choice is made SERVER-SIDE by the isEberhex env var, because the browser
+// can't read Render env vars itself. Only the PUBLIC channel name is exposed
+// here — never the JWT.
+app.get('/config', (req, res) => {
+  res.json({ twitchChannel: activeHost.twitchChannel });
 });
 
 // Lightweight endpoint you can point an uptime monitor (e.g. UptimeRobot,
@@ -171,16 +209,18 @@ function censorChatMessage(message) {
 // Twitch. Everything the bot says is prefixed with the player's in-game name
 // so chat knows who it came from.
 //
-// Set these as environment variables on Render (Settings -> Environment);
-// treat the JWT like a password — it must live ONLY on the server:
-//   SE_JWT_TOKEN   -> "Show secrets" at
-//                     https://streamelements.com/dashboard/account/channels
-//   SE_CHANNEL_ID  -> your SE account/channel id (from the /channels/me id)
+// The credentials come from the active host chosen above (isEberhex), so
+// nothing here changes when you switch hosts. Set these on Render (Settings
+// -> Environment); treat every JWT like a password — they live ONLY on the
+// server. For EACH host, grab both values from "Show secrets" at
+// https://streamelements.com/dashboard/account/channels:
+//   SE_JWT_TOKEN_EBERHEX  / SE_CHANNEL_ID_EBERHEX
+//   SE_JWT_TOKEN_IZU      / SE_CHANNEL_ID_IZU
 //
 // Requires Node's built-in fetch (Node 18+). If your service pins an older
 // Node, `npm install node-fetch` and import it here instead.
-const SE_JWT_TOKEN = process.env.SE_JWT_TOKEN || '';
-const SE_CHANNEL_ID = process.env.SE_CHANNEL_ID || '';
+const SE_JWT_TOKEN = activeHost.seJwtToken;
+const SE_CHANNEL_ID = activeHost.seChannelId;
 const SE_SAY_URL = SE_CHANNEL_ID
   ? `https://api.streamelements.com/kappa/v2/bot/${SE_CHANNEL_ID}/say`
   : null;
