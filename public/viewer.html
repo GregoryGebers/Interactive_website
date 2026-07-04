@@ -215,6 +215,49 @@
       z-index: 20;
     }
 
+    /* ---- Chat input bubble: only YOU see this, while typing. The sent
+       message everyone sees is drawn on the canvas as a pixel speech
+       bubble (see drawChatBubble in the script). Follows the player each
+       frame via positionChatInput(). ---- */
+    #chatInputWrap {
+      position: absolute;
+      display: none;
+      z-index: 15;
+      transform: translate(-50%, -100%);
+    }
+    #chatInput {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 10px;
+      color: var(--ink);
+      background: var(--cream);
+      border: 2px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+      padding: 9px 10px;
+      width: 220px;
+      outline: none;
+    }
+    #chatInput:focus {
+      border-color: var(--slime-dark);
+    }
+    #chatInput::placeholder {
+      color: #7a8a7d;
+    }
+    /* Pixel-step tail pointing down at your character. Two stacked squares
+       instead of a smooth CSS triangle, to keep the retro blocky look. */
+    #chatInputWrap::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      bottom: -10px;
+      width: 10px;
+      height: 10px;
+      transform: translateX(-50%);
+      background: var(--cream);
+      border: 2px solid var(--ink);
+      border-top: none;
+      box-shadow: 3px 3px 0 var(--ink);
+    }
+
     /* Shown on <body> while #twitchControls has handed clicks/keys to the
        Twitch player, so it's obvious the game itself is temporarily not
        receiving input. */
@@ -249,6 +292,11 @@
 
   <button id="twitchControls" class="pixel-btn pixel-btn-small">📺 Interact with Stream</button>
 
+  <!-- Private chat composer — hidden until you press T in-game. -->
+  <div id="chatInputWrap">
+    <input id="chatInput" type="text" maxlength="100" placeholder="Say something..." autocomplete="off" />
+  </div>
+
   <div id="loginOverlay">
     <div class="login-box">
       <p class="login-title">JOIN THE GAME</p>
@@ -257,7 +305,7 @@
         <input id="usernameColor" type="color" value="#1e3fff" title="Name color" />
       </div>
       <button id="usernameBtn" class="pixel-btn">GO</button>
-      <p class="hint"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to move</p>
+      <p class="hint"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to move · <kbd>T</kbd> to chat</p>
     </div>
   </div>
 
@@ -454,7 +502,9 @@
       username: "",
       color: "#1e3fff",
       action: "idle",
-      score: 0
+      score: 0,
+      chatMessage: null,
+      chatExpiresAt: 0
     };
 
     // ---- Other connected players, keyed by socket id ----
@@ -545,6 +595,145 @@
         p.displayEmote = emote;
         p.displayFrameRow = emote === 'run' ? (p.frameRow ?? 3) : 0;
         p.displayFrameIndex = p.localFrameIndex;
+      }
+    }
+
+    // ---- Chat ----------------------------------------------------------------
+    // Press T -> a private input bubble opens above YOUR character (nobody
+    // else sees it). Press Enter -> the message is sent to the server, which
+    // filters it and broadcasts the clean version to everyone (including you,
+    // so what you see is exactly what others see). Escape cancels.
+    const CHAT_MAX_LENGTH = 100;
+    const CHAT_DURATION_MS = 6000; // how long a sent bubble stays visible
+
+    const chatInputWrap = document.getElementById('chatInputWrap');
+    const chatInput = document.getElementById('chatInput');
+    let chatOpen = false;
+
+    function openChat() {
+      if (chatOpen || !hasJoined) return;
+      chatOpen = true;
+      // Stop any held movement — while the input has focus, the canvas
+      // stops receiving keyup events, so a held key would run forever.
+      player.running = false;
+      player.jumping = false;
+      chatInputWrap.style.display = 'block';
+      positionChatInput();
+      chatInput.value = '';
+      chatInput.focus();
+    }
+
+    function closeChat() {
+      chatOpen = false;
+      chatInputWrap.style.display = 'none';
+      chatInput.value = '';
+      canvas.focus();
+    }
+
+    chatInput.addEventListener('keydown', (e) => {
+      e.stopPropagation(); // typing must never move the character
+      if (e.key === 'Enter') {
+        const message = chatInput.value.trim().slice(0, CHAT_MAX_LENGTH);
+        if (message) socket.emit('chat', { message });
+        closeChat();
+      } else if (e.key === 'Escape') {
+        closeChat();
+      }
+    });
+
+    // Keep the composer hovering above your character. World coords ->
+    // screen coords using the same scale/offset the canvas draws with, so
+    // it stays glued to the slime across window sizes and letterboxing.
+    function positionChatInput() {
+      if (!chatOpen) return;
+      const screenX = offsetX + (player.x + player.width / 2) * scale;
+      const screenY = offsetY + (player.y - 30) * scale;
+      chatInputWrap.style.left = `${screenX}px`;
+      chatInputWrap.style.top = `${screenY}px`;
+    }
+
+    // The server broadcasts the FILTERED message to everyone, sender
+    // included — rendering only what comes back keeps every screen showing
+    // the identical censored text.
+    socket.on('chat', (data) => {
+      if (!data || typeof data.message !== 'string' || !data.message) return;
+      const expiresAt = performance.now() + CHAT_DURATION_MS;
+      if (data.id === socket.id) {
+        player.chatMessage = data.message;
+        player.chatExpiresAt = expiresAt;
+      } else if (otherPlayers[data.id]) {
+        otherPlayers[data.id].chatMessage = data.message;
+        otherPlayers[data.id].chatExpiresAt = expiresAt;
+      }
+    });
+
+    // ---- Pixel speech bubble rendering (canvas, world space) ----
+    const CHAT_FONT = '8px "Press Start 2P", monospace';
+    const CHAT_LINE_HEIGHT = 12;
+    const CHAT_PAD = 6;
+    const CHAT_MAX_LINE_CHARS = 18;
+
+    function wrapChatLines(text, maxChars) {
+      const lines = [];
+      let line = '';
+      for (let word of text.split(' ')) {
+        // Hard-break words longer than a whole line so they can't blow the
+        // bubble out sideways.
+        while (word.length > maxChars) {
+          if (line) { lines.push(line); line = ''; }
+          lines.push(word.slice(0, maxChars));
+          word = word.slice(maxChars);
+        }
+        if (!word) continue;
+        if (!line) {
+          line = word;
+        } else if (line.length + 1 + word.length <= maxChars) {
+          line += ' ' + word;
+        } else {
+          lines.push(line);
+          line = word;
+        }
+      }
+      if (line) lines.push(line);
+      return lines;
+    }
+
+    // Hard-edged box + offset shadow + blocky stepped tail: same visual
+    // language as the login panel and HUD chip, no rounded corners, no blur.
+    function drawChatBubble(ctx, text, cx, bottomY) {
+      const lines = wrapChatLines(text, CHAT_MAX_LINE_CHARS);
+      ctx.font = CHAT_FONT;
+      let maxW = 0;
+      for (const l of lines) maxW = Math.max(maxW, ctx.measureText(l).width);
+      const w = Math.ceil(maxW) + CHAT_PAD * 2;
+      const h = lines.length * CHAT_LINE_HEIGHT + CHAT_PAD * 2 - 3;
+      const x = Math.round(cx - w / 2);
+      const y = Math.round(bottomY - h - 8); // leave room for the tail
+
+      // Offset shadow, then body, then border.
+      ctx.fillStyle = '#16241a';
+      ctx.fillRect(x + 2, y + 2, w, h);
+      ctx.fillStyle = '#f3f7ee';
+      ctx.fillRect(x, y, w, h);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#16241a';
+      ctx.strokeRect(x, y, w, h);
+
+      // Pixel-step tail (two shrinking blocks) pointing at the character.
+      ctx.fillStyle = '#16241a';
+      ctx.fillRect(cx - 5, y + h, 10, 5);
+      ctx.fillRect(cx - 3, y + h + 3, 6, 5);
+      ctx.fillStyle = '#f3f7ee';
+      ctx.fillRect(cx - 3, y + h - 1, 6, 4);
+      ctx.fillRect(cx - 1, y + h + 3, 2, 3);
+
+      ctx.fillStyle = '#16241a';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      let ty = y + CHAT_PAD;
+      for (const l of lines) {
+        ctx.fillText(l, x + CHAT_PAD, ty);
+        ty += CHAT_LINE_HEIGHT;
       }
     }
 
@@ -796,6 +985,22 @@
       playObj.textBaseline = 'bottom';
       playObj.fillText(player.username, player.x + player.width/2, player.y - 5);
 
+      // Chat bubbles go on top of sprites and usernames, drawn in the same
+      // world space so they scale with everything else.
+      const nowMs = performance.now();
+      for (const id in otherPlayers) {
+        const p = otherPlayers[id];
+        if (p.chatMessage && nowMs < p.chatExpiresAt) {
+          drawChatBubble(playObj, p.chatMessage, (p.renderX ?? p.x) + 10, (p.renderY ?? p.y) - 22);
+        }
+      }
+      if (player.chatMessage && nowMs < player.chatExpiresAt) {
+        drawChatBubble(playObj, player.chatMessage, player.x + player.width / 2, player.y - 22);
+      }
+
+      // The HTML chat composer (only you see it) tracks your character too.
+      positionChatInput();
+
       // HUD text drawn in real screen space so it stays a fixed, readable size.
       playObj.setTransform(1, 0, 0, 1, 0, 0);
       const scoreText = "SCORE " + player.score;
@@ -833,6 +1038,15 @@
 
     canvas.addEventListener('keydown', e => {
       const key = normKey(e.key);
+
+      // T opens the chat composer. preventDefault so the "t" keystroke that
+      // opened it doesn't also get typed into the freshly-focused input.
+      if (key === 't' && hasJoined && !chatOpen) {
+        e.preventDefault();
+        openChat();
+        return;
+      }
+
       if (RIGHT_KEYS.has(key) && player.onGround) {
         player.action = "run";
         if (player.running == false){
