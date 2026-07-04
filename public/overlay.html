@@ -66,6 +66,23 @@
     p.chatExpiresAt = now0() + CHAT_DURATION_MS;
   });
 
+  // ---- Bat swings --------------------------------------------------------
+  // The server broadcasts 'player-swing' {id, dir} whenever someone presses
+  // space in viewer.html. The overlay just plays the same 250ms bottom-to-
+  // top swipe animation viewer.html uses, anchored to that player's sprite.
+  // (The knockback itself needs no overlay logic — the launched player's
+  // own client applies the velocity, and their normal position updates
+  // carry the flight here like any other movement.)
+  const SWING_DURATION_MS = 250;
+
+  socket.on('player-swing', data => {
+    if (!data) return;
+    const p = players[data.id];
+    if (!p) return;
+    p.swingStartAt = now0();
+    p.swingDir = Number(data.dir) === -1 ? -1 : 1;
+  });
+
   const CHAT_FONT = '8px "Press Start 2P", monospace';
   const CHAT_LINE_HEIGHT = 12;
   const CHAT_PAD = 6;
@@ -160,6 +177,11 @@
   grassImg.onload = () => {
     requestAnimationFrame(draw);
   }
+
+  // Bat sprite is drawn VERTICALLY (grip at the bottom) — the swing code
+  // rotates it around the grip, so image-up = where the bat points.
+  const batImg = new Image();
+  batImg.src = '/assets/obstacles/bat.png';
 
 
   let coin = null;
@@ -310,6 +332,32 @@
     return { emote, frameRow, frameIndex: p.localFrameIndex };
   }
 
+  // ---- Bat swing rendering -------------------------------------------------
+  // Identical animation math to viewer.html: the bat pivots around the
+  // character's center (the grip), sweeping from low-forward to up-forward
+  // with an ease-out, mirrored for left-facing swings. Drawn in WORLD space
+  // (inside the scaled transform), so it shrinks with the sprites exactly
+  // like everything else on the overlay.
+  const BAT_DRAW_W = 9;
+  const BAT_DRAW_H = 26;
+  const SWING_START_ANGLE = 2.4;   // radians clockwise from straight-up (~137deg, low)
+  const SWING_END_ANGLE = -0.35;   // slightly past vertical (~-20deg, high)
+
+  function drawBatSwing(context, cx, cy, dir, progress) {
+    if (!batImg.complete || !batImg.naturalWidth) return; // image not loaded yet
+    const t = Math.min(Math.max(progress, 0), 1);
+    // Ease-out so the swipe starts fast and finishes soft, like a real swing.
+    const eased = 1 - (1 - t) * (1 - t);
+    const angle = SWING_START_ANGLE + (SWING_END_ANGLE - SWING_START_ANGLE) * eased;
+    context.save();
+    context.translate(cx, cy);
+    context.scale(dir, 1);
+    context.rotate(angle);
+    // Grip at the pivot, barrel extending "up" in local space.
+    context.drawImage(batImg, -BAT_DRAW_W / 2, -BAT_DRAW_H, BAT_DRAW_W, BAT_DRAW_H);
+    context.restore();
+  }
+
   function draw(currentTime) {
     const now = currentTime || performance.now();
     const deltaTime = Math.min((now - lastFrameTime) / 1000, 0.25); // clamp huge gaps (e.g. tab was backgrounded)
@@ -343,6 +391,23 @@
         p.renderX - 20, p.renderY - 20,
         fw, fh
       );
+    }
+
+    // Bat swings go over the sprites (the bat passes in front of the
+    // character), still in the same scaled world space. Each swing plays
+    // for SWING_DURATION_MS from when its event arrived.
+    const swingNowMs = performance.now();
+    for (const id in players) {
+      const p = players[id];
+      if (p.swingStartAt && swingNowMs - p.swingStartAt < SWING_DURATION_MS) {
+        drawBatSwing(
+          ctx,
+          p.renderX + 10, // sprite center (matches the name-label offset)
+          p.renderY + 10,
+          p.swingDir || 1,
+          (swingNowMs - p.swingStartAt) / SWING_DURATION_MS
+        );
+      }
     }
 
     // ---- Pass 2: text, in SCREEN space ----
