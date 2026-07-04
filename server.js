@@ -245,6 +245,19 @@ const MAX_CHAT_LENGTH = 100;
 const MIN_CHAT_INTERVAL_MS = 1000; // at most 1 message per second per player
 const lastChatAt = {};
 
+// ---- AFK timeout -------------------------------------------------------------
+// Characters that haven't ACTUALLY done anything for 2 minutes get removed
+// from view everywhere (broadcast as a normal 'remove-player', which both
+// viewer.html and overlay.html already handle).
+//
+// Important: clients emit "move" ~30x/sec even while standing perfectly
+// still, so receiving move events is NOT a sign of life. Activity means the
+// position genuinely changed (beyond a tiny epsilon) or the player chatted.
+const AFK_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+const AFK_SWEEP_INTERVAL_MS = 10 * 1000; // how often we check
+const AFK_MOVE_EPSILON = 0.5; // world units — ignores float jitter
+const lastActivityAt = {};
+
 io.on('connection', (socket) => {
   console.log(`[connect] ${socket.id} recovered=${socket.recovered}`);
 
@@ -274,6 +287,7 @@ io.on('connection', (socket) => {
         : DEFAULT_USERNAME_COLOR;
 
       players[socket.id] = { x: 100, y: 100, emote: 'idle', score: 0, username, color };
+      lastActivityAt[socket.id] = Date.now(); // joining counts as activity
       socket.broadcast.emit('new-player', { id: socket.id, ...players[socket.id] });
     } catch (err) {
       console.error(`[join] error from ${socket.id}:`, err);
@@ -315,6 +329,7 @@ io.on('connection', (socket) => {
       if (!message) return;
 
       lastChatAt[socket.id] = now;
+      lastActivityAt[socket.id] = now; // chatting counts as activity
 
       // Filter profanity/slurs, then broadcast the CLEAN version to everyone
       // — including the sender, so their own bubble shows exactly what the
@@ -342,6 +357,16 @@ io.on('connection', (socket) => {
         return;
       }
 
+      // Only a real position change counts as activity — idle clients keep
+      // streaming identical coordinates and must NOT reset the AFK clock.
+      const prev = players[socket.id];
+      if (
+        Math.abs(clean.x - prev.x) > AFK_MOVE_EPSILON ||
+        Math.abs(clean.y - prev.y) > AFK_MOVE_EPSILON
+      ) {
+        lastActivityAt[socket.id] = now;
+      }
+
       players[socket.id] = clean;
       socket.broadcast.emit('player-move', { id: socket.id, ...clean });
     } catch (err) {
@@ -357,8 +382,12 @@ io.on('connection', (socket) => {
     if (!players[socket.id]) return; // never joined as a player — nothing to clean up
 
     // Don't remove immediately — give them a window to reconnect.
+    // NOTE: lastActivityAt is deliberately NOT deleted here — the AFK sweep
+    // would read a missing entry as "idle since forever" and kick them out
+    // of the grace window within seconds, defeating its purpose.
     pendingRemoval[socket.id] = setTimeout(() => {
       delete players[socket.id];
+      delete lastActivityAt[socket.id];
       delete pendingRemoval[socket.id];
       io.emit('remove-player', socket.id);
     }, DISCONNECT_GRACE_MS);
@@ -368,6 +397,28 @@ io.on('connection', (socket) => {
     console.error(`[socket error] ${socket.id}:`, err);
   });
 });
+
+// ---- AFK sweep ----------------------------------------------------------------
+// Every few seconds, remove any player whose last real activity is older
+// than the timeout. Removal goes out as the same 'remove-player' event a
+// disconnect uses, so viewer.html and overlay.html both clear the character
+// with zero extra client logic. The kicked player also gets a private
+// 'afk-removed' so their own screen can show the rejoin prompt.
+setInterval(() => {
+  const now = Date.now();
+  for (const id in players) {
+    const last = lastActivityAt[id] || 0;
+    if (now - last > AFK_TIMEOUT_MS) {
+      delete players[id];
+      delete lastActivityAt[id];
+      delete lastMoveAt[id];
+      delete lastChatAt[id];
+      io.emit('remove-player', id);
+      io.to(id).emit('afk-removed');
+      console.log(`[afk] removed ${id} after ${Math.round((now - last) / 1000)}s of inactivity`);
+    }
+  }
+}, AFK_SWEEP_INTERVAL_MS);
 
 // ---- Process-level safety nets ---------------------------------------------
 // Without these, one unexpected error anywhere can crash the whole process
