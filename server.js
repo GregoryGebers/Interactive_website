@@ -383,6 +383,25 @@ const MAX_CHAT_LENGTH = 100;
 const MIN_CHAT_INTERVAL_MS = 1000; // at most 1 message per second per player
 const lastChatAt = {};
 
+// ---- Bat swing ---------------------------------------------------------------
+// Space swings a bat. The HIT DETECTION runs here on the server (using the
+// positions it already tracks) rather than trusting the attacker's client,
+// so a modified client can't claim hits on people across the map. The
+// cooldown is ALSO enforced here for the same reason — the client's own
+// 2s cooldown is just UX; this one is the real gate.
+const SWING_COOLDOWN_MS = 2000;
+// Server-side check runs slightly under the client's 2000ms so a legit
+// swing arriving a few ms "early" (timer drift, network jitter) isn't dropped.
+const SWING_COOLDOWN_TOLERANCE_MS = 100;
+const SWING_RADIUS = 60;        // world units around the sweet spot
+const SWING_REACH_OFFSET = 20;  // sweet spot sits slightly in front of the swinger
+// Max jump impulse in viewer.html is Yforce(0.5)*180 + 200 = 290. The knock
+// is 3/4 of that, launched at 45 degrees, so each axis gets that magnitude
+// divided by sqrt(2).
+const MAX_JUMP_IMPULSE = 290;
+const KNOCKBACK_COMPONENT = Math.round((MAX_JUMP_IMPULSE * 0.75) / Math.SQRT2); // ~154
+const lastSwingAt = {};
+
 // ---- AFK timeout -------------------------------------------------------------
 // Characters that haven't ACTUALLY done anything for 2 minutes get removed
 // from view everywhere (broadcast as a normal 'remove-player', which both
@@ -485,6 +504,47 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('swing', (data) => {
+    try {
+      const attacker = players[socket.id];
+      if (!attacker) return; // spectators can't swing
+
+      const now = Date.now();
+      if (lastSwingAt[socket.id] &&
+          now - lastSwingAt[socket.id] < SWING_COOLDOWN_MS - SWING_COOLDOWN_TOLERANCE_MS) {
+        return; // still on cooldown — drop silently
+      }
+      lastSwingAt[socket.id] = now;
+      lastActivityAt[socket.id] = now; // swinging counts as activity
+
+      // Facing direction: only ±1 is trusted, anything else becomes right.
+      const dir = (data && Number(data.dir) === -1) ? -1 : 1;
+
+      // Everyone else needs to SEE the swing animation on this character.
+      socket.broadcast.emit('player-swing', { id: socket.id, dir });
+
+      // Hit check against the server's own record of player positions:
+      // a circle centered slightly in front of the swinger, facing side.
+      const cx = attacker.x + dir * SWING_REACH_OFFSET;
+      const cy = attacker.y;
+      for (const id in players) {
+        if (id === socket.id) continue; // can't hit yourself
+        const target = players[id];
+        const dx = target.x - cx;
+        const dy = target.y - cy;
+        if (dx * dx + dy * dy <= SWING_RADIUS * SWING_RADIUS) {
+          // 45-degree launch away from the swing, at 3/4 max-jump force.
+          io.to(id).emit('knockback', {
+            vx: dir * KNOCKBACK_COMPONENT,
+            vy: -KNOCKBACK_COMPONENT,
+          });
+        }
+      }
+    } catch (err) {
+      console.error(`[swing] error from ${socket.id}:`, err);
+    }
+  });
+
   socket.on('move', (data) => {
     try {
       if (!players[socket.id]) return; // hasn't joined as a player (e.g. a spectator connection)
@@ -522,6 +582,7 @@ io.on('connection', (socket) => {
     console.log(`[disconnect] ${socket.id} (${reason})`);
     delete lastMoveAt[socket.id];
     delete lastChatAt[socket.id];
+    delete lastSwingAt[socket.id];
 
     if (!players[socket.id]) return; // never joined as a player — nothing to clean up
 
@@ -557,6 +618,7 @@ setInterval(() => {
       delete lastActivityAt[id];
       delete lastMoveAt[id];
       delete lastChatAt[id];
+      delete lastSwingAt[id];
       io.emit('remove-player', id);
       io.to(id).emit('afk-removed');
       console.log(`[afk] removed ${id} after ${Math.round((now - last) / 1000)}s of inactivity`);
