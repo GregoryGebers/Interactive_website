@@ -1,6 +1,13 @@
 <!DOCTYPE html>
 <html>
-<head><title>Stream Overlay</title></head>
+<head>
+  <title>Stream Overlay</title>
+  <!-- Needed so canvas chat bubbles can use the same retro font as
+       viewer.html. OBS's browser source loads Google Fonts fine. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
 <body style="margin:0; background:transparent;">
 <canvas id="overlay" width="1920" height="1080" style="position:absolute;"></canvas>
 <script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
@@ -12,6 +19,13 @@
   const players = {};
 
   const now0 = () => performance.now();
+
+  // Canvas fillText silently falls back to the default font until the
+  // webfont is actually loaded — force-load it up front so the first chat
+  // bubble doesn't render in Times New Roman.
+  if (document.fonts && document.fonts.load) {
+    document.fonts.load('8px "Press Start 2P"');
+  }
 
   socket.on("init", data => {
     for (const id in players) delete players[id];
@@ -37,6 +51,90 @@
     }
   });
   socket.on("remove-player", id => delete players[id]);
+
+  // ---- Chat bubbles ----------------------------------------------------------
+  // The server broadcasts already-filtered messages as {id, message}.
+  // Attach the message to the matching player and let draw() render it as a
+  // pixel speech bubble until it expires.
+  const CHAT_DURATION_MS = 6000;
+
+  socket.on('chat', data => {
+    if (!data || typeof data.message !== 'string' || !data.message) return;
+    const p = players[data.id];
+    if (!p) return;
+    p.chatMessage = data.message;
+    p.chatExpiresAt = now0() + CHAT_DURATION_MS;
+  });
+
+  const CHAT_FONT = '8px "Press Start 2P", monospace';
+  const CHAT_LINE_HEIGHT = 12;
+  const CHAT_PAD = 6;
+  const CHAT_MAX_LINE_CHARS = 18;
+
+  function wrapChatLines(text, maxChars) {
+    const lines = [];
+    let line = '';
+    for (let word of text.split(' ')) {
+      // Hard-break words longer than a whole line so they can't blow the
+      // bubble out sideways.
+      while (word.length > maxChars) {
+        if (line) { lines.push(line); line = ''; }
+        lines.push(word.slice(0, maxChars));
+        word = word.slice(maxChars);
+      }
+      if (!word) continue;
+      if (!line) {
+        line = word;
+      } else if (line.length + 1 + word.length <= maxChars) {
+        line += ' ' + word;
+      } else {
+        lines.push(line);
+        line = word;
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  // Same pixel look as viewer.html: hard-edged box, offset shadow, blocky
+  // stepped tail, no rounded corners or blur.
+  function drawChatBubble(context, text, cx, bottomY) {
+    const lines = wrapChatLines(text, CHAT_MAX_LINE_CHARS);
+    context.font = CHAT_FONT;
+    let maxW = 0;
+    for (const l of lines) maxW = Math.max(maxW, context.measureText(l).width);
+    const w = Math.ceil(maxW) + CHAT_PAD * 2;
+    const h = lines.length * CHAT_LINE_HEIGHT + CHAT_PAD * 2 - 3;
+    const x = Math.round(cx - w / 2);
+    const y = Math.round(bottomY - h - 8); // leave room for the tail
+
+    // Offset shadow, then body, then border.
+    context.fillStyle = '#16241a';
+    context.fillRect(x + 2, y + 2, w, h);
+    context.fillStyle = '#f3f7ee';
+    context.fillRect(x, y, w, h);
+    context.lineWidth = 2;
+    context.strokeStyle = '#16241a';
+    context.strokeRect(x, y, w, h);
+
+    // Pixel-step tail (two shrinking blocks) pointing at the character.
+    context.fillStyle = '#16241a';
+    context.fillRect(cx - 5, y + h, 10, 5);
+    context.fillRect(cx - 3, y + h + 3, 6, 5);
+    context.fillStyle = '#f3f7ee';
+    context.fillRect(cx - 3, y + h - 1, 6, 4);
+    context.fillRect(cx - 1, y + h + 3, 2, 3);
+
+    context.fillStyle = '#16241a';
+    context.textAlign = 'left';
+    context.textBaseline = 'top';
+    let ty = y + CHAT_PAD;
+    for (const l of lines) {
+      context.fillText(l, x + CHAT_PAD, ty);
+      ty += CHAT_LINE_HEIGHT;
+    }
+  }
+
   const idleimg = new Image();
   idleimg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png';
   
@@ -202,6 +300,17 @@
     ctx.textBaseline = 'bottom';
     ctx.fillText(p.username || '', p.renderX + 10, p.renderY - 5);
     }
+
+    // Chat bubbles on top of every sprite/name, so they're never hidden
+    // behind another player who happens to be standing in front.
+    const nowMs = performance.now();
+    for (const id in players) {
+      const p = players[id];
+      if (p.chatMessage && nowMs < p.chatExpiresAt) {
+        drawChatBubble(ctx, p.chatMessage, p.renderX + 10, p.renderY - 22);
+      }
+    }
+
     requestAnimationFrame(draw);
     if (high_user) {
       ctx.font = 'bold 20px Arial';
