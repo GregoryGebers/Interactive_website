@@ -225,28 +225,6 @@
       z-index: 15;
       transform: translate(-50%, -100%);
     }
-        /* "Say in Twitch chat?" toggle — sits above the chat input, same pixel
-       language as everything else (hard border, offset shadow, palette). */
-    #twitchToggleRow {
-      display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
-      font-family: 'Press Start 2P', monospace; font-size: 8px;
-      color: var(--cream); user-select: none;
-    }
-    #twitchToggleRow .tt-label {
-      background: var(--panel); border: 2px solid var(--ink);
-      box-shadow: 2px 2px 0 var(--ink); padding: 5px 7px; letter-spacing: 0.5px;
-    }
-    #twitchToggle {
-      width: 34px; height: 18px; border: 2px solid var(--ink);
-      box-shadow: 2px 2px 0 var(--ink); background: var(--panel-light);
-      cursor: pointer; position: relative; flex: none;
-    }
-    #twitchToggle .knob {
-      position: absolute; top: 1px; left: 1px; width: 14px; height: 14px;
-      background: var(--muted); transition: left 0.08s steps(2), background 0.08s;
-    }
-    #twitchToggle.on { background: var(--slime-dark); }
-    #twitchToggle.on .knob { left: 17px; background: var(--gold); } 
     #chatInput {
       font-family: 'Press Start 2P', monospace;
       font-size: 10px;
@@ -264,6 +242,59 @@
     #chatInput::placeholder {
       color: #7a8a7d;
     }
+
+    /* ---- "Say in Twitch chat?" toggle: sits above the chat input, same
+       pixel language as everything else (hard border, offset shadow,
+       slime/gold palette). When ON, a sent message is ALSO relayed to the
+       real Twitch channel chat via the server's StreamElements bot. ---- */
+    #twitchToggleRow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 8px;
+      color: var(--cream);
+      user-select: none;
+    }
+    #twitchToggleRow .tt-label {
+      background: var(--panel);
+      border: 2px solid var(--ink);
+      box-shadow: 2px 2px 0 var(--ink);
+      padding: 5px 7px;
+      letter-spacing: 0.5px;
+    }
+    #twitchToggle {
+      width: 34px;
+      height: 18px;
+      border: 2px solid var(--ink);
+      box-shadow: 2px 2px 0 var(--ink);
+      background: var(--panel-light);
+      cursor: pointer;
+      position: relative;
+      flex: none;
+    }
+    #twitchToggle .knob {
+      position: absolute;
+      top: 1px;
+      left: 1px;
+      width: 14px;
+      height: 14px;
+      background: var(--muted);
+      transition: left 0.08s steps(2), background 0.08s;
+    }
+    #twitchToggle.on {
+      background: var(--slime-dark);
+    }
+    #twitchToggle.on .knob {
+      left: 17px;
+      background: var(--gold);
+    }
+    #twitchToggle:focus-visible {
+      outline: 3px solid var(--slime);
+      outline-offset: 2px;
+    }
+
     /* Pixel-step tail pointing down at your character. Two stacked squares
        instead of a smooth CSS triangle, to keep the retro blocky look. */
     #chatInputWrap::after {
@@ -316,6 +347,12 @@
 
   <!-- Private chat composer — hidden until you press T in-game. -->
   <div id="chatInputWrap">
+    <div id="twitchToggleRow">
+      <span class="tt-label">SAY IN TWITCH CHAT?</span>
+      <div id="twitchToggle" role="switch" aria-checked="false" tabindex="0">
+        <span class="knob"></span>
+      </div>
+    </div>
     <input id="chatInput" type="text" maxlength="100" placeholder="Say something..." autocomplete="off" />
   </div>
 
@@ -687,6 +724,35 @@
     const chatInput = document.getElementById('chatInput');
     let chatOpen = false;
 
+    // ---- "Say in Twitch chat?" toggle ----
+    // When ON, a sent message is ALSO relayed to the real Twitch channel
+    // chat (server-side, via your StreamElements bot). Defaults OFF on every
+    // page load so nobody accidentally broadcasts; the choice persists while
+    // the page stays open (across repeated chat opens).
+    let sayInTwitch = false;
+    const twitchToggle = document.getElementById('twitchToggle');
+    function renderTwitchToggle() {
+      twitchToggle.classList.toggle('on', sayInTwitch);
+      twitchToggle.setAttribute('aria-checked', sayInTwitch ? 'true' : 'false');
+    }
+    function toggleSayInTwitch() {
+      sayInTwitch = !sayInTwitch;
+      renderTwitchToggle();
+    }
+    twitchToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleSayInTwitch();
+      chatInput.focus(); // keep typing focus after toggling
+    });
+    twitchToggle.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        toggleSayInTwitch();
+      }
+    });
+    renderTwitchToggle();
+
     function openChat() {
       if (chatOpen || !hasJoined) return;
       chatOpen = true;
@@ -711,7 +777,9 @@
       e.stopPropagation(); // typing must never move the character
       if (e.key === 'Enter') {
         const message = chatInput.value.trim().slice(0, CHAT_MAX_LENGTH);
-        if (message) socket.emit('chat', { message });
+        // Include the toggle state so the server knows whether to relay this
+        // one to real Twitch chat as well as the in-game bubble.
+        if (message) socket.emit('chat', { message, toTwitch: sayInTwitch });
         closeChat();
       } else if (e.key === 'Escape') {
         closeChat();
