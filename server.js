@@ -12,6 +12,7 @@ const server = http.createServer(app);
 // (editor.html), and read here on the server for the coin spawn points. Kept as
 // a path constant because several routes below touch it.
 const SCENE_PATH = path.join(__dirname, 'public', 'scene.json');
+const SHOP_PATH = path.join(__dirname, 'public', 'shop.json');
 
 // ---- Socket.IO server ----------------------------------------------------
 const io = new Server(server, {
@@ -333,26 +334,111 @@ function pickRandomCoin() {
   return coins[Math.floor(Math.random() * coins.length)];
 }
 
-// ---- Shop pricing (authoritative) ------------------------------------------
-// The server owns coin balances, so it must own prices too. The client only
-// says WHICH item/tier it wants; the price is looked up here. Grouped by item
-// so new shops/items slot in without touching the buy handler below.
-const SKIN_COST = 10; // every cosmetic skin costs the same
-const UPGRADE_COSTS = {
-  jump: [5, 10, 15],          // 3 tiers
-  dash: [5, 10, 15],          // 3 tiers
-  health: [5, 10, 15],        // 3 tiers
-  invisibility: [10, 20, 30], // 3 tiers (duration)
-  doubleJump: [20],           // single tier
+// ---- Shop configuration + authoritative pricing -----------------------------
+// public/shop.json is shared by the level editor, viewer and this server.
+// The server re-reads it when a purchase or hit happens, so prices and combat
+// tuning stay authoritative even though the editor/client can display them.
+const DEFAULT_COSMETIC_ITEMS = {
+  classic:  { enabled: true, cost: 0 },
+  mob1:     { enabled: true, cost: 10 }, mob2:     { enabled: true, cost: 10 }, mob3:     { enabled: true, cost: 10 },
+  monster1: { enabled: true, cost: 10 }, monster2: { enabled: true, cost: 10 }, monster3: { enabled: true, cost: 10 },
+  enemy1:   { enabled: true, cost: 10 }, enemy2:   { enabled: true, cost: 10 }, enemy3:   { enabled: true, cost: 10 },
 };
-// Returns the coin price for an item/tier, or null if it isn't a real purchase.
-function priceOf(item, tier) {
-  if (item === 'skin') return SKIN_COST;
-  const tiers = UPGRADE_COSTS[item];
-  if (!tiers) return null;
+const DEFAULT_SHOP_CONFIG = {
+  version: 2,
+  cosmetics: { items: DEFAULT_COSMETIC_ITEMS },
+  upgrades: {
+    jump:         { enabled: true, costs: [5, 10, 15], pct: 10 },
+    dash:         { enabled: true, costs: [5, 10, 15], pct: 10 },
+    knockback:    { enabled: true, costs: [5, 10, 15], pct: 15, stunBaseMs: 500, stunMaxMs: 1500 },
+    health:       { enabled: true, costs: [5, 10, 15] },
+    doubleJump:   { enabled: true, costs: [20] },
+    invisibility: { enabled: true, costs: [10, 20, 30] },
+  },
+};
+
+function finiteNumber(value, fallback, min = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(min, n) : fallback;
+}
+
+function normalizeCosts(value, fallback) {
+  if (!Array.isArray(value) || !value.length) return [...fallback];
+  const clean = value
+    .map(v => Math.round(finiteNumber(v, NaN, 0)))
+    .filter(Number.isFinite);
+  return clean.length ? clean : [...fallback];
+}
+
+function normalizeShopConfig(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const srcUp = src.upgrades && typeof src.upgrades === 'object' ? src.upgrades : {};
+  const out = JSON.parse(JSON.stringify(DEFAULT_SHOP_CONFIG));
+
+  const srcCos = src.cosmetics && typeof src.cosmetics === 'object' ? src.cosmetics : {};
+  const srcItems = srcCos.items && typeof srcCos.items === 'object' ? srcCos.items : null;
+  for (const [id, fallback] of Object.entries(DEFAULT_COSMETIC_ITEMS)) {
+    const target = out.cosmetics.items[id];
+    const incoming = srcItems && srcItems[id] && typeof srcItems[id] === 'object' ? srcItems[id] : null;
+    if (incoming) {
+      target.enabled = incoming.enabled !== false;
+      target.cost = id === 'classic' ? 0 : Math.round(finiteNumber(incoming.cost, fallback.cost, 0));
+    } else if (id !== 'classic' && (Object.prototype.hasOwnProperty.call(srcCos, 'enabled') || Object.prototype.hasOwnProperty.call(srcCos, 'cost'))) {
+      target.enabled = srcCos.enabled !== false;
+      target.cost = Math.round(finiteNumber(srcCos.cost, fallback.cost, 0));
+    }
+  }
+
+  for (const [key, fallback] of Object.entries(DEFAULT_SHOP_CONFIG.upgrades)) {
+    const incoming = srcUp[key] && typeof srcUp[key] === 'object' ? srcUp[key] : {};
+    const target = out.upgrades[key];
+    target.enabled = incoming.enabled !== false;
+    target.costs = normalizeCosts(incoming.costs, fallback.costs);
+    if (Object.prototype.hasOwnProperty.call(fallback, 'pct')) {
+      target.pct = finiteNumber(incoming.pct, fallback.pct, 0);
+    }
+  }
+
+  const kbIn = srcUp.knockback && typeof srcUp.knockback === 'object' ? srcUp.knockback : {};
+  out.upgrades.knockback.stunBaseMs = Math.round(finiteNumber(
+    kbIn.stunBaseMs, DEFAULT_SHOP_CONFIG.upgrades.knockback.stunBaseMs, 0
+  ));
+  out.upgrades.knockback.stunMaxMs = Math.max(
+    out.upgrades.knockback.stunBaseMs,
+    Math.round(finiteNumber(kbIn.stunMaxMs, DEFAULT_SHOP_CONFIG.upgrades.knockback.stunMaxMs, 0))
+  );
+  return out;
+}
+
+function loadShopConfig() {
+  try {
+    return normalizeShopConfig(JSON.parse(fs.readFileSync(SHOP_PATH, 'utf8')));
+  } catch (e) {
+    console.warn('[shop] could not load shop.json — using defaults:', e.message);
+    return normalizeShopConfig(DEFAULT_SHOP_CONFIG);
+  }
+}
+
+// Returns the coin price for an item/tier, or null when disabled/invalid.
+function priceOf(item, tier, skinId) {
+  const cfg = loadShopConfig();
+  if (item === 'skin') {
+    if (typeof skinId !== 'string' || skinId === 'classic') return null;
+    const skin = cfg.cosmetics.items[skinId];
+    return skin && skin.enabled !== false ? skin.cost : null;
+  }
+  const def = cfg.upgrades[item];
+  if (!def || !def.enabled) return null;
   const t = Number(tier);
-  if (!Number.isInteger(t) || t < 1 || t > tiers.length) return null;
-  return tiers[t - 1];
+  if (!Number.isInteger(t) || t < 1 || t > def.costs.length) return null;
+  return def.costs[t - 1];
+}
+
+// Upgrade ownership relevant to server-authoritative mechanics. Kept outside
+// the movement player object so sanitizeMoveData cannot accidentally erase it.
+const playerUpgrades = {};
+function freshUpgradeState() {
+  return { jump: 0, dash: 0, knockback: 0, health: 0, invisibility: 0, doubleJump: 0 };
 }
 
 // Single source of truth for the current coin, so a new player joining just
@@ -499,6 +585,7 @@ io.on('connection', (socket) => {
       const skin = data && typeof data.skin === 'string' ? data.skin.slice(0, 40) : 'classic';
 
       players[socket.id] = { x: 100, y: 100, emote: 'idle', score: 0, username, color, skin };
+      playerUpgrades[socket.id] = freshUpgradeState();
       lastActivityAt[socket.id] = Date.now(); // joining counts as activity
       socket.broadcast.emit('new-player', { id: socket.id, ...players[socket.id] });
     } catch (err) {
@@ -549,16 +636,30 @@ io.on('connection', (socket) => {
 
       const item = data && typeof data.item === 'string' ? data.item : null;
       const tier = data && data.tier;
-      const price = priceOf(item, tier);
+      const skinId = data && typeof data.skinId === 'string' ? data.skinId : null;
+      const price = priceOf(item, tier, skinId);
       const score = Number(buyer.score) || 0;
 
       if (price === null) {
-        socket.emit('buy_result', { ok: false, score, item, tier, reason: 'invalid' });
+        socket.emit('buy_result', { ok: false, score, item, tier, skinId, reason: 'invalid' });
         return;
       }
       if (score < price) {
-        socket.emit('buy_result', { ok: false, score, item, tier, reason: 'poor' });
+        socket.emit('buy_result', { ok: false, score, item, tier, skinId, reason: 'poor' });
         return;
+      }
+
+      // Upgrades must be purchased in order. This matters especially for
+      // knockback because the server itself uses this tier during hit checks.
+      if (item !== 'skin') {
+        const state = playerUpgrades[socket.id] || (playerUpgrades[socket.id] = freshUpgradeState());
+        const requestedTier = Number(tier);
+        const currentTier = Number(state[item]) || 0;
+        if (!Number.isInteger(requestedTier) || requestedTier !== currentTier + 1) {
+          socket.emit('buy_result', { ok: false, score, item, tier, skinId, reason: 'invalid' });
+          return;
+        }
+        state[item] = requestedTier;
       }
 
       buyer.score = score - price;
@@ -566,7 +667,7 @@ io.on('connection', (socket) => {
 
       // Echo item/tier so the client knows exactly what it just paid for, and
       // broadcast the reduced score to everyone else (overlay + other clients).
-      socket.emit('buy_result', { ok: true, score: buyer.score, item, tier });
+      socket.emit('buy_result', { ok: true, score: buyer.score, item, tier, skinId });
       socket.broadcast.emit('player-move', { id: socket.id, ...buyer });
     } catch (err) {
       console.error(`[buy] error from ${socket.id}:`, err);
@@ -643,10 +744,29 @@ io.on('connection', (socket) => {
         const dx = target.x - cx;
         const dy = target.y - cy;
         if (dx * dx + dy * dy <= SWING_RADIUS * SWING_RADIUS) {
-          // 45-degree launch away from the swing, at 3/4 max-jump force.
+          // Tier 0 is the exact old/base knockback. Each purchased knockback
+          // tier adds the configured percentage (15% by default), additively:
+          // T1=115%, T2=130%, T3=145% with the default shop.json.
+          const cfg = loadShopConfig();
+          const kbCfg = cfg.upgrades.knockback;
+          const maxTier = Math.max(1, kbCfg.costs.length);
+          const ownedTier = Number(playerUpgrades[socket.id] && playerUpgrades[socket.id].knockback) || 0;
+          const knockTier = kbCfg.enabled ? Math.min(ownedTier, maxTier) : 0;
+          const multiplier = 1 + knockTier * (finiteNumber(kbCfg.pct, 15, 0) / 100);
+          const component = Math.round(KNOCKBACK_COMPONENT * multiplier);
+
+          // A hit always locks controls for at least the base duration. The
+          // attacker's knockback tier linearly scales that to the configured
+          // max (0.5s -> 1.5s across three tiers by default).
+          const stunBaseMs = finiteNumber(kbCfg.stunBaseMs, 500, 0);
+          const stunMaxMs = Math.max(stunBaseMs, finiteNumber(kbCfg.stunMaxMs, 1500, 0));
+          const stunMs = Math.round(stunBaseMs + (stunMaxMs - stunBaseMs) * (knockTier / maxTier));
+
           io.to(id).emit('knockback', {
-            vx: dir * KNOCKBACK_COMPONENT,
-            vy: -KNOCKBACK_COMPONENT,
+            vx: dir * component,
+            vy: -component,
+            stunMs,
+            tier: knockTier,
           });
         }
       }
@@ -702,6 +822,7 @@ io.on('connection', (socket) => {
     // of the grace window within seconds, defeating its purpose.
     pendingRemoval[socket.id] = setTimeout(() => {
       delete players[socket.id];
+      delete playerUpgrades[socket.id];
       delete lastActivityAt[socket.id];
       delete pendingRemoval[socket.id];
       io.emit('remove-player', socket.id);
@@ -725,6 +846,7 @@ setInterval(() => {
     const last = lastActivityAt[id] || 0;
     if (now - last > AFK_TIMEOUT_MS) {
       delete players[id];
+      delete playerUpgrades[id];
       delete lastActivityAt[id];
       delete lastMoveAt[id];
       delete lastChatAt[id];

@@ -521,7 +521,7 @@
         <span class="shop-coins">COINS <b id="shopCoins">0</b></span>
         <button id="shopClose" class="pixel-btn pixel-btn-small">CLOSE</button>
       </div>
-      <p class="shop-sub">Cosmetic skins — 10 coins each. Coins come from your score. Press <b>P</b> to close.</p>
+      <p class="shop-sub">Cosmetic skins and gameplay upgrades. Prices are configured per item. Coins come from your score. Press <b>P</b> to close.</p>
       <p id="shopMsg"></p>
       <div id="shopGrid" class="shop-grid"></div>
     </div>
@@ -827,21 +827,19 @@
     const ACCEL_AIR = 1100;        // ... and in the air (lighter control)
     const FRICTION_GROUND = 1500;  // decel when no input, grounded
     const AIR_DRAG = 180;          // decel when no input, airborne (keeps momentum)
-    // Jump strength scales with the "Higher Jump" upgrade: base is 75% of the
-    // old value; each purchased tier adds 10% of it. See jumpVelocity().
+    // Jump strength starts at the existing base. Per-tier percentages are
+    // loaded from shop.json so the level editor can tune them without code edits.
     const JUMP_REF = 340;               // previous full-jump strength (reference)
-    const JUMP_BASE = JUMP_REF * 0.8;  // 255 — smaller default jump
-    const JUMP_STEP = JUMP_REF * 0.10;  // +34 per tier -> tier 3 = 357
+    const JUMP_BASE = JUMP_REF * 0.8;   // current base jump
     const GRAVITY_UP = 560;        // gravity while rising (Yv < 0): floaty
     const GRAVITY_DOWN = 1050;     // gravity while falling: snappier
     const MAX_FALL = 900;          // terminal fall speed
     const JUMP_CUT = 0.45;         // release-while-rising multiplies Yv by this
     const COYOTE_TIME = 0.10;      // grace window to still jump after a ledge
     const JUMP_BUFFER = 0.12;      // remember a jump press this long before landing
-    // Dash strength scales with the "Stronger Dash" upgrade, same rule.
+    // Dash percentage is also loaded from shop.json.
     const DASH_REF = 430;               // previous dash speed (reference)
-    const DASH_BASE = DASH_REF * 0.75;  // 322.5 — weaker default dash
-    const DASH_STEP = DASH_REF * 0.10;  // +43 per tier -> tier 3 = 451.5
+    const DASH_BASE = DASH_REF * 0.75;  // current base dash
     const DASH_DURATION = 0.14;    // how long the burst lasts
     const DASH_COOLDOWN = 0.45;    // min time between dashes
 
@@ -850,13 +848,57 @@
     let coyoteTimer = 0, jumpBufferTimer = 0;
     let isDashing = false, dashDir = 1, dashTimer = 0, dashCooldownTimer = 0, canDash = true;
     let airJumps = 0;   // remaining mid-air jumps (from the double-jump upgrade)
+    let controlLockTimer = 0; // seconds remaining after being hit by a bat/sword
+
+    function clearCombatInputs() {
+      inputLeft = inputRight = jumpHeld = shiftHeld = ctrlHeld = false;
+      jumpBufferTimer = 0;
+      isDashing = false;
+    }
 
     // ---- Purchasable gameplay upgrades (reset every session; not persisted) --
-    // Tier 0..3 for the tiered ones; doubleJump is a one-off unlock. Coins are
-    // spent server-side (see the buy flow); the effects are applied here.
-    const upgrades = { jump: 0, dash: 0, health: 0, invisibility: 0, doubleJump: false };
-    function jumpVelocity() { return JUMP_BASE + upgrades.jump * JUMP_STEP; }
-    function dashSpeed() { return DASH_BASE + upgrades.dash * DASH_STEP; }
+    // Tier 0..3 for the tiered ones; doubleJump is a one-off unlock. The
+    // server authorizes all purchases; knockback tier is ALSO tracked there
+    // because hit force must not be client-trust based.
+    const upgrades = { jump: 0, dash: 0, knockback: 0, health: 0, invisibility: 0, doubleJump: false };
+
+    const DEFAULT_COSMETIC_ITEMS = {
+      classic:  { enabled: true, cost: 0 },
+      mob1:     { enabled: true, cost: 10 }, mob2:     { enabled: true, cost: 10 }, mob3:     { enabled: true, cost: 10 },
+      monster1: { enabled: true, cost: 10 }, monster2: { enabled: true, cost: 10 }, monster3: { enabled: true, cost: 10 },
+      enemy1:   { enabled: true, cost: 10 }, enemy2:   { enabled: true, cost: 10 }, enemy3:   { enabled: true, cost: 10 },
+    };
+    const DEFAULT_SHOP_CONFIG = {
+      version: 2,
+      cosmetics: { items: DEFAULT_COSMETIC_ITEMS },
+      upgrades: {
+        jump:         { enabled: true, costs: [5, 10, 15], pct: 10 },
+        dash:         { enabled: true, costs: [5, 10, 15], pct: 10 },
+        knockback:    { enabled: true, costs: [5, 10, 15], pct: 15, stunBaseMs: 500, stunMaxMs: 1500 },
+        health:       { enabled: true, costs: [5, 10, 15] },
+        doubleJump:   { enabled: true, costs: [20] },
+        invisibility: { enabled: true, costs: [10, 20, 30] },
+      },
+    };
+    let shopConfig = JSON.parse(JSON.stringify(DEFAULT_SHOP_CONFIG));
+
+    function upgradePct(cat, fallback) {
+      const def = shopConfig.upgrades && shopConfig.upgrades[cat];
+      const n = Number(def && def.pct);
+      return Number.isFinite(n) ? Math.max(0, n) : fallback;
+    }
+    function upgradeEnabled(cat) {
+      const def = shopConfig.upgrades && shopConfig.upgrades[cat];
+      return !!def && def.enabled !== false;
+    }
+    function jumpVelocity() {
+      const tiers = upgradeEnabled('jump') ? upgrades.jump : 0;
+      return JUMP_BASE + tiers * JUMP_REF * (upgradePct('jump', 10) / 100);
+    }
+    function dashSpeed() {
+      const tiers = upgradeEnabled('dash') ? upgrades.dash : 0;
+      return DASH_BASE + tiers * DASH_REF * (upgradePct('dash', 10) / 100);
+    }
 
     // Hidden health stat (base 3, +1 per tier up to 6). Not shown anywhere yet;
     // wired for a future damage/combat pass.
@@ -909,18 +951,17 @@
       idle: `${base}/Slime${n}/Parts/Slime${n}_Idle_body.png`,
       run: `${base}/Slime${n}/Parts/Slime${n}_Run_body.png`,
     });
-    const SKIN_COST = 10;
     const SKINS = {
-      classic:  { name: 'Classic Slime',  cost: 0,         idle: `${CHAR_DIR}/Idle/Slime1_Idle_body.png`, run: `${CHAR_DIR}/Run/Slime1_Run_body.png` },
-      mob1:     { name: 'Blue Mob',        cost: SKIN_COST, ...bodySheets(P_MOB, 1) },
-      mob2:     { name: 'Green Mob',       cost: SKIN_COST, ...bodySheets(P_MOB, 2) },
-      mob3:     { name: 'Red Mob',         cost: SKIN_COST, ...bodySheets(P_MOB, 3) },
-      monster1: { name: 'Monster I',       cost: SKIN_COST, ...bodySheets(P_MONSTER, 1) },
-      monster2: { name: 'Monster II',      cost: SKIN_COST, ...bodySheets(P_MONSTER, 2) },
-      monster3: { name: 'Monster III',     cost: SKIN_COST, ...bodySheets(P_MONSTER, 3) },
-      enemy1:   { name: 'Enemy I',         cost: SKIN_COST, ...bodySheets(P_ENEMY, 1) },
-      enemy2:   { name: 'Enemy II',        cost: SKIN_COST, ...bodySheets(P_ENEMY, 2) },
-      enemy3:   { name: 'Enemy III',       cost: SKIN_COST, ...bodySheets(P_ENEMY, 3) },
+      classic:  { name: 'Classic Slime',  enabled: true, cost: 0, idle: `${CHAR_DIR}/Idle/Slime1_Idle_body.png`, run: `${CHAR_DIR}/Run/Slime1_Run_body.png` },
+      mob1:     { name: 'Blue Mob',        enabled: true, cost: 10, ...bodySheets(P_MOB, 1) },
+      mob2:     { name: 'Green Mob',       enabled: true, cost: 10, ...bodySheets(P_MOB, 2) },
+      mob3:     { name: 'Red Mob',         enabled: true, cost: 10, ...bodySheets(P_MOB, 3) },
+      monster1: { name: 'Monster I',       enabled: true, cost: 10, ...bodySheets(P_MONSTER, 1) },
+      monster2: { name: 'Monster II',      enabled: true, cost: 10, ...bodySheets(P_MONSTER, 2) },
+      monster3: { name: 'Monster III',     enabled: true, cost: 10, ...bodySheets(P_MONSTER, 3) },
+      enemy1:   { name: 'Enemy I',         enabled: true, cost: 10, ...bodySheets(P_ENEMY, 1) },
+      enemy2:   { name: 'Enemy II',        enabled: true, cost: 10, ...bodySheets(P_ENEMY, 2) },
+      enemy3:   { name: 'Enemy III',       enabled: true, cost: 10, ...bodySheets(P_ENEMY, 3) },
     };
 
     // Lazily loaded sheet pair per skin. "classic" reuses the images the game
@@ -977,6 +1018,7 @@
 
     function equipSkin(id) {
       if (!ownedSkins.has(id)) return;
+      if (id !== 'classic' && (!SKINS[id] || SKINS[id].enabled === false)) return;
       equippedSkin = id;
       player.skin = id;
       persistSkins();
@@ -995,16 +1037,89 @@
     const shopMsgEl = document.getElementById('shopMsg');
     document.getElementById('shopClose').addEventListener('click', closeShop);
 
-    // Upgrade definitions used for both rendering and buy validation. Costs
-    // here mirror the server's authoritative PRICING (server.js priceOf()).
-    const UPGRADE_DEFS = [
-      { cat: 'jump',         title: 'Higher Jump',   icon: '⤒', costs: [5, 10, 15], blurb: 'Jump higher' },
-      { cat: 'dash',         title: 'Stronger Dash', icon: '»', costs: [5, 10, 15], blurb: 'Dash farther' },
-      { cat: 'health',       title: 'More Health',   icon: '♥', costs: [5, 10, 15], blurb: 'Tougher slime' },
-      { cat: 'doubleJump',   title: 'Double Jump',   icon: '⇈', single: true, cost: 20, blurb: 'Jump again mid-air' },
-      { cat: 'invisibility', title: 'Invisibility',  icon: '◌', costs: [10, 20, 30], blurb: 'Vanish · Ctrl' },
-    ];
-    const UPGRADE_TITLE = Object.fromEntries(UPGRADE_DEFS.map(d => [d.cat, d.title]));
+    // Upgrade definitions are rebuilt from public/shop.json. This same file is
+    // used by the server for authoritative prices/combat and by the level editor.
+    let UPGRADE_DEFS = [];
+    let UPGRADE_TITLE = {};
+
+    function normalizeClientShopConfig(raw) {
+      const out = JSON.parse(JSON.stringify(DEFAULT_SHOP_CONFIG));
+      const src = raw && typeof raw === 'object' ? raw : {};
+      const srcUp = src.upgrades && typeof src.upgrades === 'object' ? src.upgrades : {};
+      const srcCos = src.cosmetics && typeof src.cosmetics === 'object' ? src.cosmetics : {};
+      const srcItems = srcCos.items && typeof srcCos.items === 'object' ? srcCos.items : null;
+      for (const [id, fallback] of Object.entries(DEFAULT_COSMETIC_ITEMS)) {
+        const target = out.cosmetics.items[id];
+        const incoming = srcItems && srcItems[id] && typeof srcItems[id] === 'object' ? srcItems[id] : null;
+        if (incoming) {
+          target.enabled = incoming.enabled !== false;
+          const c = Number(incoming.cost);
+          if (Number.isFinite(c)) target.cost = id === 'classic' ? 0 : Math.max(0, Math.round(c));
+        } else if (id !== 'classic' && (Object.prototype.hasOwnProperty.call(srcCos, 'enabled') || Object.prototype.hasOwnProperty.call(srcCos, 'cost'))) {
+          target.enabled = srcCos.enabled !== false;
+          const c = Number(srcCos.cost);
+          if (Number.isFinite(c)) target.cost = Math.max(0, Math.round(c));
+        }
+      }
+      for (const [key, fallback] of Object.entries(DEFAULT_SHOP_CONFIG.upgrades)) {
+        const incoming = srcUp[key] && typeof srcUp[key] === 'object' ? srcUp[key] : {};
+        const target = out.upgrades[key];
+        target.enabled = incoming.enabled !== false;
+        if (Array.isArray(incoming.costs) && incoming.costs.length) {
+          const costs = incoming.costs.map(Number).filter(Number.isFinite).map(n => Math.max(0, Math.round(n)));
+          if (costs.length) target.costs = costs;
+        }
+        if (Object.prototype.hasOwnProperty.call(fallback, 'pct')) {
+          const pct = Number(incoming.pct);
+          if (Number.isFinite(pct)) target.pct = Math.max(0, pct);
+        }
+      }
+      const kb = srcUp.knockback && typeof srcUp.knockback === 'object' ? srcUp.knockback : {};
+      const baseMs = Number(kb.stunBaseMs), maxMs = Number(kb.stunMaxMs);
+      if (Number.isFinite(baseMs)) out.upgrades.knockback.stunBaseMs = Math.max(0, Math.round(baseMs));
+      if (Number.isFinite(maxMs)) out.upgrades.knockback.stunMaxMs = Math.max(out.upgrades.knockback.stunBaseMs, Math.round(maxMs));
+      return out;
+    }
+
+    function rebuildUpgradeDefs() {
+      const up = shopConfig.upgrades;
+      const defs = [
+        { cat: 'jump',         title: 'Higher Jump',      icon: '⤒', costs: [...up.jump.costs],         blurb: `+${up.jump.pct}% jump / tier`, enabled: up.jump.enabled },
+        { cat: 'dash',         title: 'Stronger Dash',    icon: '»', costs: [...up.dash.costs],         blurb: `+${up.dash.pct}% dash / tier`, enabled: up.dash.enabled },
+        { cat: 'knockback',    title: 'Stronger Weapon',  icon: '⚔', costs: [...up.knockback.costs],    blurb: `+${up.knockback.pct}% knockback / tier`, enabled: up.knockback.enabled },
+        { cat: 'health',       title: 'More Health',      icon: '♥', costs: [...up.health.costs],       blurb: 'Tougher slime', enabled: up.health.enabled },
+        { cat: 'doubleJump',   title: 'Double Jump',      icon: '⇈', single: true, cost: up.doubleJump.costs[0] || 0, blurb: 'Jump again mid-air', enabled: up.doubleJump.enabled },
+        { cat: 'invisibility', title: 'Invisibility',     icon: '◌', costs: [...up.invisibility.costs], blurb: 'Vanish · Ctrl', enabled: up.invisibility.enabled },
+      ];
+      UPGRADE_DEFS = defs.filter(d => d.enabled !== false);
+      UPGRADE_TITLE = Object.fromEntries(defs.map(d => [d.cat, d.title]));
+    }
+
+    async function loadShopConfig() {
+      try {
+        const res = await fetch('/shop.json', { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        shopConfig = normalizeClientShopConfig(await res.json());
+      } catch (e) {
+        console.warn('Could not load shop.json — using defaults:', e);
+        shopConfig = normalizeClientShopConfig(DEFAULT_SHOP_CONFIG);
+      }
+      for (const [id, skin] of Object.entries(SKINS)) {
+        const cfg = shopConfig.cosmetics.items[id] || DEFAULT_COSMETIC_ITEMS[id] || { enabled: false, cost: 0 };
+        skin.enabled = cfg.enabled !== false;
+        skin.cost = id === 'classic' ? 0 : Math.max(0, Math.round(Number(cfg.cost) || 0));
+      }
+      // If an equipped purchasable skin was disabled by the level designer,
+      // immediately fall back to Classic. The owned skin stays in localStorage
+      // and becomes usable again if it is re-enabled later.
+      if (equippedSkin !== 'classic' && SKINS[equippedSkin] && SKINS[equippedSkin].enabled === false) {
+        equippedSkin = 'classic'; player.skin = 'classic'; persistSkins();
+      }
+      rebuildUpgradeDefs();
+      if (shopOpen) renderShop();
+    }
+    rebuildUpgradeDefs();
+    loadShopConfig();
 
     // The whole catalog, in display order. Splitting into multiple shops later
     // is just a matter of filtering this array by section id.
@@ -1061,8 +1176,12 @@
       shopCoinsEl.textContent = player.score;
       shopGridEl.innerHTML = SHOP_CATALOG.map(section => {
         let cards;
-        if (section.kind === 'cosmetic') cards = Object.entries(SKINS).map(([id, s]) => skinCardHTML(id, s)).join('');
-        else cards = UPGRADE_DEFS.map(upgradeCardHTML).join('');
+        if (section.kind === 'cosmetic') {
+          cards = Object.entries(SKINS)
+            .filter(([id, skin]) => id === 'classic' ? skin.enabled !== false : skin.enabled !== false)
+            .map(([id, skin]) => skinCardHTML(id, skin)).join('');
+        } else cards = UPGRADE_DEFS.map(upgradeCardHTML).join('');
+        if (!cards) return '';
         return `<div class="shop-section">${section.title}</div><div class="shop-grid-inner">${cards}</div>`;
       }).join('');
       shopGridEl.querySelectorAll('[data-equip]').forEach(b => b.addEventListener('click', () => equipSkin(b.dataset.equip)));
@@ -1072,11 +1191,11 @@
 
     function buySkin(id) {
       const s = SKINS[id];
-      if (!s || ownedSkins.has(id)) return;
+      if (!s || s.enabled === false || ownedSkins.has(id) || id === 'classic') return;
       if (player.score < s.cost) { setShopMsg('Not enough coins — collect more!'); return; }
       pendingBuy = { type: 'skin', id };
       setShopMsg('Buying ' + s.name + '…');
-      socket.emit('buy', { item: 'skin' }); // server prices + deducts authoritatively
+      socket.emit('buy', { item: 'skin', skinId: id }); // server validates this exact skin + price
     }
 
     function buyUpgrade(cat, tier) {
@@ -1389,6 +1508,11 @@
       player.Yv = vy;
       player.onGround = false; // airborne now — gravity takes over
       isDashing = false;       // a hit cancels any dash in progress
+
+      const stunMs = Number(data.stunMs);
+      const safeStunMs = Number.isFinite(stunMs) ? Math.max(0, Math.min(5000, stunMs)) : 500;
+      controlLockTimer = Math.max(controlLockTimer, safeStunMs / 1000);
+      clearCombatInputs();     // no steering/jumping/dashing/attacking during hit-stun
     });
 
     // Draws one bat mid-swing, rotated around the character's center (the
@@ -1571,8 +1695,13 @@
         frameTimer = 0;
       }
 
-      // ---- Movement (uses last frame's onGround result) ----
-      const moveDir = (inputRight ? 1 : 0) - (inputLeft ? 1 : 0);
+      // ---- Hit-stun / movement (uses last frame's onGround result) ----
+      if (controlLockTimer > 0) {
+        controlLockTimer = Math.max(0, controlLockTimer - deltaTime);
+        clearCombatInputs();
+      }
+      const controlsEnabled = controlLockTimer <= 0;
+      const moveDir = controlsEnabled ? ((inputRight ? 1 : 0) - (inputLeft ? 1 : 0)) : 0;
       const grounded = player.onGround;
 
       // Coyote time, dash refresh, and mid-air jumps all reset while we still
@@ -1603,7 +1732,7 @@
 
       // ---- Jump: immediate press-to-jump, gated by coyote time + buffer.
       // With the double-jump upgrade, a second press in mid-air jumps again. ----
-      if (!isDashing && jumpBufferTimer > 0) {
+      if (controlsEnabled && !isDashing && jumpBufferTimer > 0) {
         if (coyoteTimer > 0) {
           player.Yv = -jumpVelocity();
           player.onGround = false;
@@ -2056,6 +2185,14 @@
       if (key === 't' && hasJoined && !chatOpen) {
         e.preventDefault();
         openChat();
+        return;
+      }
+
+      // Being hit temporarily disables gameplay controls. Menu/chat keys above
+      // remain available, but movement, jump, dash, vanish and attack are ignored.
+      if (controlLockTimer > 0) {
+        if (RIGHT_KEYS.has(key) || LEFT_KEYS.has(key) || JUMP_KEYS.has(key) ||
+            key === 'Shift' || key === 'Control' || key === ' ') e.preventDefault();
         return;
       }
 

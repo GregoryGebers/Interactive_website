@@ -42,6 +42,7 @@ ASSETS_DIR = os.path.join(PUBLIC_DIR, "assets")
 EDIT_ASSETS_DIR = os.path.join(ASSETS_DIR, "edit_assets")
 EDITOR_HTML = os.path.join(ROOT, "tools", "editor.html")
 SCENE_PATH = os.path.join(PUBLIC_DIR, "scene.json")
+SHOP_PATH = os.path.join(PUBLIC_DIR, "shop.json")
 
 HOST = "127.0.0.1"  # localhost only — NOT 0.0.0.0. This is what keeps it local.
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
@@ -94,6 +95,59 @@ def validate_scene(scene):
     for key in ("props", "hitboxes", "coins"):
         if key in scene and not isinstance(scene[key], list):
             return f"scene.{key} must be an array."
+    return None
+
+
+
+def validate_shop(shop):
+    """Validate the editable public/shop.json structure before writing it."""
+    if not isinstance(shop, dict):
+        return "Body must be a shop object."
+    cosmetics = shop.get("cosmetics")
+    upgrades = shop.get("upgrades")
+    if not isinstance(cosmetics, dict) or not isinstance(upgrades, dict):
+        return "shop.cosmetics and shop.upgrades are required objects."
+
+    items = cosmetics.get("items")
+    if not isinstance(items, dict) or not items:
+        return "shop.cosmetics.items must be a non-empty object."
+    for skin_id, item in items.items():
+        if not isinstance(item, dict):
+            return f"shop.cosmetics.items.{skin_id} must be an object."
+        try:
+            if float(item.get("cost", 0)) < 0:
+                return f"shop.cosmetics.items.{skin_id}.cost cannot be negative."
+        except (TypeError, ValueError):
+            return f"shop.cosmetics.items.{skin_id}.cost must be numeric."
+
+    expected = ("jump", "dash", "knockback", "health", "doubleJump", "invisibility")
+    for key in expected:
+        item = upgrades.get(key)
+        if not isinstance(item, dict):
+            return f"shop.upgrades.{key} must be an object."
+        costs = item.get("costs")
+        if not isinstance(costs, list) or not costs:
+            return f"shop.upgrades.{key}.costs must be a non-empty array."
+        try:
+            if any(float(v) < 0 for v in costs):
+                return f"shop.upgrades.{key}.costs cannot be negative."
+        except (TypeError, ValueError):
+            return f"shop.upgrades.{key}.costs must be numeric."
+
+    for key in ("jump", "dash", "knockback"):
+        try:
+            if float(upgrades[key].get("pct", 0)) < 0:
+                return f"shop.upgrades.{key}.pct cannot be negative."
+        except (TypeError, ValueError):
+            return f"shop.upgrades.{key}.pct must be numeric."
+
+    try:
+        base_ms = float(upgrades["knockback"].get("stunBaseMs", 500))
+        max_ms = float(upgrades["knockback"].get("stunMaxMs", 1500))
+        if base_ms < 0 or max_ms < base_ms:
+            return "Knockback stun must satisfy 0 <= stunBaseMs <= stunMaxMs."
+    except (TypeError, ValueError):
+        return "Knockback stun values must be numeric."
     return None
 
 
@@ -150,7 +204,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split("?", 1)[0]
-        if path != "/api/scene":
+        if path not in ("/api/scene", "/api/shop"):
             self.send_error(404, "Not found")
             return
 
@@ -159,24 +213,40 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"error": "Bad or too-large body."}, 400)
             return
         try:
-            scene = json.loads(self.rfile.read(length).decode("utf-8"))
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             self._send_json({"error": "Body must be valid JSON."}, 400)
             return
 
-        err = validate_scene(scene)
+        if path == "/api/shop":
+            err = validate_shop(payload)
+            if err:
+                self._send_json({"error": err}, 400)
+                return
+            try:
+                with open(SHOP_PATH, "w", encoding="utf-8") as f:
+                    json.dump(payload, f, indent=2)
+                    f.write("\n")
+            except OSError as e:
+                self._send_json({"error": f"Could not write shop.json: {e}"}, 500)
+                return
+            print("[shop] saved shop.json")
+            self._send_json({"ok": True})
+            return
+
+        err = validate_scene(payload)
         if err:
             self._send_json({"error": err}, 400)
             return
 
         try:
             with open(SCENE_PATH, "w", encoding="utf-8") as f:
-                json.dump(scene, f, indent=2)
+                json.dump(payload, f, indent=2)
         except OSError as e:
             self._send_json({"error": f"Could not write scene.json: {e}"}, 500)
             return
 
-        coins = len(scene.get("coins", []))
+        coins = len(payload.get("coins", []))
         print(f"[scene] saved scene.json — {coins} coin spawn points")
         self._send_json({"ok": True, "coins": coins})
 
@@ -202,6 +272,7 @@ def main():
     print(f"  Editor:  {url}")
     print(f"  Assets:  {ASSETS_DIR}")
     print(f"  Scene:   {SCENE_PATH}")
+    print(f"  Shop:    {SHOP_PATH}")
     print("  Bound to localhost — not reachable from the internet.")
     print("  Press Ctrl+C to stop.")
     print("=" * 60)

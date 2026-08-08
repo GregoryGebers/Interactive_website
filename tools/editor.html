@@ -138,6 +138,77 @@
     .thumb-preview img { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
     .src-label { font-size: 10px; color: var(--muted); word-break: break-all; margin-bottom: 10px; }
     .section-divider { height: 2px; background: var(--panel-lighter); margin: 14px 0; }
+    /* ---- Dedicated Shop Settings modal ---- */
+    #shopSettingsOverlay {
+      position: fixed; inset: 0; z-index: 50; display: none;
+      align-items: center; justify-content: center; background: rgba(7, 12, 8, .82);
+    }
+    #shopSettingsOverlay.open { display: flex; }
+    .shop-settings-modal {
+      width: 80vw; height: 80vh; min-width: 760px; min-height: 480px;
+      background: var(--panel); border: 3px solid var(--ink); box-shadow: 8px 8px 0 var(--ink);
+      display: grid; grid-template-rows: auto auto 1fr; overflow: hidden;
+    }
+    .shop-settings-header {
+      display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+      background: var(--panel-light); border-bottom: 3px solid var(--ink);
+    }
+    .shop-settings-title {
+      font-family: 'Press Start 2P', monospace; color: var(--slime); font-size: 13px;
+      text-shadow: 2px 2px 0 var(--ink); margin-right: auto;
+    }
+    .shop-settings-subtitle { font-size: 11px; color: var(--muted); }
+    .shop-settings-tabs {
+      display: flex; gap: 8px; padding: 10px 16px; border-bottom: 2px solid var(--panel-lighter);
+      background: var(--panel);
+    }
+    .shop-tab.active { background: var(--gold); color: var(--ink); }
+    .shop-settings-body { overflow: auto; padding: 16px; }
+    .shop-tab-panel { display: none; }
+    .shop-tab-panel.active { display: block; }
+    .shop-section-heading {
+      font-family: 'Press Start 2P', monospace; font-size: 10px; color: var(--gold);
+      margin: 0 0 8px;
+    }
+    .shop-section-copy { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 0 0 14px; }
+    .cosmetic-settings-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px;
+    }
+    .cosmetic-config-card, .upgrade-config-card {
+      background: var(--panel-light); border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink);
+      padding: 12px;
+    }
+    .cosmetic-config-card.disabled-card, .upgrade-config-card.disabled-card { opacity: .58; }
+    .cosmetic-preview {
+      width: 96px; height: 96px; margin: 0 auto 10px; background-color: var(--panel);
+      border: 2px solid var(--ink); background-repeat: no-repeat; background-position: 0 0;
+      background-size: 576px 384px; image-rendering: pixelated;
+    }
+    .cosmetic-name { text-align: center; font-weight: 700; color: var(--cream); font-size: 13px; margin-bottom: 4px; }
+    .cosmetic-id { text-align: center; font-size: 9px; color: var(--muted); margin-bottom: 10px; }
+    .config-toggle {
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      color: var(--cream); font-size: 11px; margin: 8px 0;
+    }
+    .config-toggle input { accent-color: var(--slime); }
+    .config-field { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+    .config-field > span { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .config-field input { width: 100%; }
+    .starter-note { font-size: 10px; color: var(--slime); text-align: center; line-height: 1.4; margin-top: 8px; }
+    .upgrade-settings-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px;
+    }
+    .upgrade-config-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .upgrade-config-name { font-size: 12px; font-weight: 700; color: var(--gold); flex: 1; }
+    .tier-costs { display:grid; grid-template-columns: repeat(3, 1fr); gap:7px; margin-top: 8px; }
+    .tier-costs.one { grid-template-columns: 1fr; }
+    .tier-costs label { font-size:9px; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
+    .tier-costs input { width:100%; }
+    .modal-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; margin-top: 8px; }
+    @media (max-width: 900px) {
+      .shop-settings-modal { width: 94vw; height: 90vh; min-width: 0; }
+      .modal-field-grid { grid-template-columns: 1fr; }
+    }
     kbd {
       font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 700; color: var(--ink);
       background: var(--slime); border: 1px solid var(--ink); border-radius: 3px; padding: 1px 4px;
@@ -163,6 +234,8 @@
     <div class="sep"></div>
     <label class="chk"><input type="checkbox" id="snapToggle"> Snap</label>
     <input class="num" id="gridSize" type="number" min="1" max="200" value="10" title="Grid / snap size">
+    <div class="sep"></div>
+    <button class="btn gold" id="shopSettingsBtn" title="Configure cosmetics, upgrades and combat prices">🛒 Shop Settings</button>
     <div class="toolbar-spacer"></div>
     <button class="btn ghost" id="loadBtn" title="Reload scene.json from server">⟳ Reload</button>
     <button class="btn" id="exportBtn" title="Download scene.json">⭳ Export</button>
@@ -197,6 +270,38 @@
   </div>
 </div>
 
+<!-- Dedicated shop/upgrades configuration. Kept out of the narrow inspector
+     so all cosmetics and upgrade tiers can be reviewed at once. -->
+<div id="shopSettingsOverlay" aria-hidden="true">
+  <div class="shop-settings-modal" role="dialog" aria-modal="true" aria-labelledby="shopSettingsTitle">
+    <div class="shop-settings-header">
+      <div>
+        <div class="shop-settings-title" id="shopSettingsTitle">SHOP SETTINGS</div>
+        <div class="shop-settings-subtitle">Controls public/shop.json · server prices remain authoritative</div>
+      </div>
+      <button class="btn ghost" id="shopSettingsReload">⟳ Reload Shop</button>
+      <button class="btn gold" id="shopSettingsSave">💾 Save Shop</button>
+      <button class="btn danger" id="shopSettingsClose">✕ Close</button>
+    </div>
+    <div class="shop-settings-tabs">
+      <button class="btn shop-tab active" data-shop-tab="cosmetics">COSMETICS</button>
+      <button class="btn shop-tab ghost" data-shop-tab="upgrades">UPGRADES / COMBAT</button>
+    </div>
+    <div class="shop-settings-body">
+      <section class="shop-tab-panel active" data-shop-panel="cosmetics">
+        <h3 class="shop-section-heading">COSMETIC INVENTORY</h3>
+        <p class="shop-section-copy">Every available slime is shown here. Toggle purchasable skins individually and set a separate coin price for each one.</p>
+        <div id="cosmeticSettingsGrid" class="cosmetic-settings-grid"></div>
+      </section>
+      <section class="shop-tab-panel" data-shop-panel="upgrades">
+        <h3 class="shop-section-heading">UPGRADES / COMBAT</h3>
+        <p class="shop-section-copy">Enable or disable each upgrade and tune its tier prices and percentages.</p>
+        <div id="upgradeSettingsGrid" class="upgrade-settings-grid"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
 <script>
 // ============================================================================
 //  Scene Builder — a visual level editor for the platformer. It reads and
@@ -214,6 +319,44 @@ const scene = {
   hitboxes: [],   // { x, y, width, height }        — solid crates / platforms
   coins: [],      // { x, y }                       — coin spawn points
 };
+
+
+// ---- Shop/combat tuning (saved separately to public/shop.json) ------------
+// Cosmetic ids mirror viewer.html. Classic is the guaranteed starter/fallback;
+// all purchasable skins can be individually enabled and priced.
+const EDITOR_CHAR_DIR = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1';
+const EDITOR_P_MOB = '/assets/slimes/craftpix-net-788364-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG';
+const EDITOR_P_MONSTER = '/assets/slimes/craftpix-net-510319-top-down-pixel-art-slime-monsters-sprite-pack/PNG';
+const EDITOR_P_ENEMY = '/assets/slimes/craftpix-net-743043-pixel-art-slime-enemies-top-down-sprite-pack/PNG';
+const editorIdleSheet = (base, n) => `${base}/Slime${n}/Parts/Slime${n}_Idle_body.png`;
+const COSMETIC_CATALOG = [
+  { id: 'classic',  name: 'Classic Slime', idle: `${EDITOR_CHAR_DIR}/Idle/Slime1_Idle_body.png`, starter: true },
+  { id: 'mob1',     name: 'Blue Mob',      idle: editorIdleSheet(EDITOR_P_MOB, 1) },
+  { id: 'mob2',     name: 'Green Mob',     idle: editorIdleSheet(EDITOR_P_MOB, 2) },
+  { id: 'mob3',     name: 'Red Mob',       idle: editorIdleSheet(EDITOR_P_MOB, 3) },
+  { id: 'monster1', name: 'Monster I',     idle: editorIdleSheet(EDITOR_P_MONSTER, 1) },
+  { id: 'monster2', name: 'Monster II',    idle: editorIdleSheet(EDITOR_P_MONSTER, 2) },
+  { id: 'monster3', name: 'Monster III',   idle: editorIdleSheet(EDITOR_P_MONSTER, 3) },
+  { id: 'enemy1',   name: 'Enemy I',       idle: editorIdleSheet(EDITOR_P_ENEMY, 1) },
+  { id: 'enemy2',   name: 'Enemy II',      idle: editorIdleSheet(EDITOR_P_ENEMY, 2) },
+  { id: 'enemy3',   name: 'Enemy III',     idle: editorIdleSheet(EDITOR_P_ENEMY, 3) },
+];
+const DEFAULT_COSMETIC_ITEMS = Object.fromEntries(
+  COSMETIC_CATALOG.map(c => [c.id, { enabled: true, cost: c.starter ? 0 : 10 }])
+);
+const DEFAULT_SHOP_CONFIG = {
+  version: 2,
+  cosmetics: { items: DEFAULT_COSMETIC_ITEMS },
+  upgrades: {
+    jump:         { enabled: true, costs: [5, 10, 15], pct: 10 },
+    dash:         { enabled: true, costs: [5, 10, 15], pct: 10 },
+    knockback:    { enabled: true, costs: [5, 10, 15], pct: 15, stunBaseMs: 500, stunMaxMs: 1500 },
+    health:       { enabled: true, costs: [5, 10, 15] },
+    doubleJump:   { enabled: true, costs: [20] },
+    invisibility: { enabled: true, costs: [10, 20, 30] },
+  },
+};
+let shopConfig = JSON.parse(JSON.stringify(DEFAULT_SHOP_CONFIG));
 
 // ---- View (camera over the world) ------------------------------------------
 const view = { scale: 1, panX: -40, panY: -40 };
@@ -671,8 +814,11 @@ function renderWorldInspector() {
     <div class="section-divider"></div>
     <p class="insp-empty">
       <b>${scene.props.length}</b> props · <b>${scene.hitboxes.length}</b> hitboxes · <b>${scene.coins.length}</b> coins
-    </p>`;
+    </p>
+    <button class="btn gold" id="openShopFromInspector" style="width:100%;margin-top:8px">🛒 Open Shop Settings</button>`;
   wireInspector();
+  const openBtn = document.getElementById('openShopFromInspector');
+  if (openBtn) openBtn.addEventListener('click', openShopSettings);
 }
 
 function numRow(label, id, val) {
@@ -706,6 +852,144 @@ function wireInspector() {
     btn.addEventListener('click', () => inspectorAction(btn.dataset.act));
   });
 }
+
+
+// ============================================================================
+//  SHOP SETTINGS MODAL
+// ============================================================================
+const shopSettingsOverlay = document.getElementById('shopSettingsOverlay');
+const cosmeticSettingsGrid = document.getElementById('cosmeticSettingsGrid');
+const upgradeSettingsGrid = document.getElementById('upgradeSettingsGrid');
+let activeShopTab = 'cosmetics';
+
+function cosmeticSetting(id) {
+  return shopConfig.cosmetics.items[id] || (shopConfig.cosmetics.items[id] = { enabled: true, cost: id === 'classic' ? 0 : 10 });
+}
+
+function cosmeticCardHTML(c) {
+  const cfg = cosmeticSetting(c.id);
+  const disabled = cfg.enabled === false;
+  const price = Math.max(0, Math.round(Number(cfg.cost) || 0));
+  return `<div class="cosmetic-config-card ${disabled ? 'disabled-card' : ''}" data-cosmetic-card="${c.id}">
+    <div class="cosmetic-preview" style="background-image:url('${c.idle}')"></div>
+    <div class="cosmetic-name">${c.name}</div>
+    <div class="cosmetic-id">${c.id}</div>
+    <label class="config-toggle"><input type="checkbox" data-cosmetic-enabled="${c.id}" ${cfg.enabled !== false ? 'checked' : ''}> Enabled in shop</label>
+    <label class="config-field">
+      <span>Price (coins)</span>
+      <input class="num" type="number" min="0" data-cosmetic-cost="${c.id}" value="${price}" ${c.starter ? 'disabled' : ''}>
+    </label>
+    ${c.starter ? '<div class="starter-note">Starter / fallback skin · always free</div>' : ''}
+  </div>`;
+}
+
+function upgradeModalCardHTML(key, title) {
+  const u = shopConfig.upgrades[key];
+  const costs = Array.isArray(u.costs) ? u.costs : [];
+  const costInputs = costs.map((cost, i) =>
+    `<label>Tier ${i + 1}<input class="num" type="number" min="0" data-upgrade-cost="${key}" data-tier-index="${i}" value="${Math.round(Number(cost) || 0)}"></label>`
+  ).join('');
+  const pct = Object.prototype.hasOwnProperty.call(u, 'pct')
+    ? `<label class="config-field"><span>Increase per tier (%)</span><input class="num" type="number" min="0" step="0.1" data-upgrade-pct="${key}" value="${Number(u.pct) || 0}"></label>`
+    : '';
+  const stun = key === 'knockback'
+    ? `<div class="modal-field-grid">
+         <label class="config-field"><span>Base hit-stun (ms)</span><input class="num" type="number" min="0" data-knockback-stun="base" value="${Math.round(Number(u.stunBaseMs) || 0)}"></label>
+         <label class="config-field"><span>Max-tier hit-stun (ms)</span><input class="num" type="number" min="0" data-knockback-stun="max" value="${Math.round(Number(u.stunMaxMs) || 0)}"></label>
+       </div>`
+    : '';
+  return `<div class="upgrade-config-card ${u.enabled === false ? 'disabled-card' : ''}" data-upgrade-card="${key}">
+    <div class="upgrade-config-head">
+      <div class="upgrade-config-name">${title}</div>
+      <label class="config-toggle" style="margin:0"><input type="checkbox" data-upgrade-enabled="${key}" ${u.enabled !== false ? 'checked' : ''}> Enabled</label>
+    </div>
+    <div class="tier-costs ${costs.length === 1 ? 'one' : ''}">${costInputs}</div>
+    ${pct}${stun}
+  </div>`;
+}
+
+function renderShopSettings() {
+  if (!cosmeticSettingsGrid || !upgradeSettingsGrid) return;
+  cosmeticSettingsGrid.innerHTML = COSMETIC_CATALOG.map(cosmeticCardHTML).join('');
+  upgradeSettingsGrid.innerHTML = [
+    ['jump', 'HIGHER JUMP'],
+    ['dash', 'STRONGER DASH'],
+    ['knockback', 'STRONGER WEAPON / KNOCKBACK'],
+    ['health', 'MORE HEALTH'],
+    ['doubleJump', 'DOUBLE JUMP'],
+    ['invisibility', 'INVISIBILITY'],
+  ].map(([key, title]) => upgradeModalCardHTML(key, title)).join('');
+  wireShopSettings();
+}
+
+function wireShopSettings() {
+  document.querySelectorAll('[data-cosmetic-enabled]').forEach(el => el.addEventListener('change', () => {
+    cosmeticSetting(el.dataset.cosmeticEnabled).enabled = el.checked;
+    const card = document.querySelector(`[data-cosmetic-card="${el.dataset.cosmeticEnabled}"]`);
+    if (card) card.classList.toggle('disabled-card', !el.checked);
+  }));
+  document.querySelectorAll('[data-cosmetic-cost]').forEach(el => el.addEventListener('input', () => {
+    const id = el.dataset.cosmeticCost;
+    if (id === 'classic') return;
+    const n = Number(el.value);
+    if (Number.isFinite(n)) cosmeticSetting(id).cost = Math.max(0, Math.round(n));
+  }));
+  document.querySelectorAll('[data-upgrade-enabled]').forEach(el => el.addEventListener('change', () => {
+    const key = el.dataset.upgradeEnabled;
+    shopConfig.upgrades[key].enabled = el.checked;
+    const card = document.querySelector(`[data-upgrade-card="${key}"]`);
+    if (card) card.classList.toggle('disabled-card', !el.checked);
+  }));
+  document.querySelectorAll('[data-upgrade-cost]').forEach(el => el.addEventListener('input', () => {
+    const key = el.dataset.upgradeCost;
+    const i = Number(el.dataset.tierIndex);
+    const n = Number(el.value);
+    if (Number.isFinite(n) && shopConfig.upgrades[key] && shopConfig.upgrades[key].costs[i] !== undefined) {
+      shopConfig.upgrades[key].costs[i] = Math.max(0, Math.round(n));
+    }
+  }));
+  document.querySelectorAll('[data-upgrade-pct]').forEach(el => el.addEventListener('input', () => {
+    const n = Number(el.value);
+    if (Number.isFinite(n)) shopConfig.upgrades[el.dataset.upgradePct].pct = Math.max(0, n);
+  }));
+  document.querySelectorAll('[data-knockback-stun]').forEach(el => el.addEventListener('input', () => {
+    const n = Number(el.value);
+    if (!Number.isFinite(n)) return;
+    if (el.dataset.knockbackStun === 'base') shopConfig.upgrades.knockback.stunBaseMs = Math.max(0, Math.round(n));
+    else shopConfig.upgrades.knockback.stunMaxMs = Math.max(0, Math.round(n));
+  }));
+}
+
+function setShopTab(tab) {
+  activeShopTab = tab;
+  document.querySelectorAll('.shop-tab').forEach(btn => {
+    const active = btn.dataset.shopTab === tab;
+    btn.classList.toggle('active', active);
+    btn.classList.toggle('ghost', !active);
+  });
+  document.querySelectorAll('.shop-tab-panel').forEach(panel => panel.classList.toggle('active', panel.dataset.shopPanel === tab));
+}
+
+function openShopSettings() {
+  renderShopSettings();
+  setShopTab(activeShopTab);
+  shopSettingsOverlay.classList.add('open');
+  shopSettingsOverlay.setAttribute('aria-hidden', 'false');
+}
+function closeShopSettings() {
+  shopSettingsOverlay.classList.remove('open');
+  shopSettingsOverlay.setAttribute('aria-hidden', 'true');
+  canvas.focus();
+}
+
+document.getElementById('shopSettingsBtn').addEventListener('click', openShopSettings);
+document.getElementById('shopSettingsClose').addEventListener('click', closeShopSettings);
+document.getElementById('shopSettingsSave').addEventListener('click', saveShopOnly);
+document.getElementById('shopSettingsReload').addEventListener('click', async () => {
+  await loadShop(true); renderShopSettings();
+});
+document.querySelectorAll('.shop-tab').forEach(btn => btn.addEventListener('click', () => setShopTab(btn.dataset.shopTab)));
+shopSettingsOverlay.addEventListener('mousedown', e => { if (e.target === shopSettingsOverlay) closeShopSettings(); });
 
 function inspectorAction(act) {
   if (!selection) return;
@@ -916,7 +1200,7 @@ document.getElementById('gridSize').addEventListener('input', e => gridSize = Ma
 
 document.getElementById('saveBtn').addEventListener('click', saveScene);
 document.getElementById('exportBtn').addEventListener('click', exportScene);
-document.getElementById('loadBtn').addEventListener('click', () => loadScene(true));
+document.getElementById('loadBtn').addEventListener('click', () => loadAll(true));
 document.getElementById('testBtn').addEventListener('click', () => window.open('/viewer.html', '_blank'));
 
 // ============================================================================
@@ -943,20 +1227,127 @@ function cleanScene() {
   };
 }
 
+async function saveShopOnly() {
+  setStatus('saving shop…');
+  try {
+    const res = await fetch('/api/shop', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cleanShopConfig()),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || ('Shop HTTP ' + res.status));
+    setStatus('shop saved ✓', 'ok');
+  } catch (e) {
+    setStatus('shop save failed', 'err');
+    console.error(e);
+  }
+}
+
 async function saveScene() {
   setStatus('saving…');
   try {
-    const res = await fetch('/api/scene', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cleanScene()),
-    });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || ('HTTP ' + res.status));
-    setStatus('saved ✓', 'ok');
+    const [sceneRes, shopRes] = await Promise.all([
+      fetch('/api/scene', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cleanScene()),
+      }),
+      fetch('/api/shop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cleanShopConfig()),
+      }),
+    ]);
+    if (!sceneRes.ok) throw new Error((await sceneRes.json().catch(() => ({}))).error || ('Scene HTTP ' + sceneRes.status));
+    if (!shopRes.ok) throw new Error((await shopRes.json().catch(() => ({}))).error || ('Shop HTTP ' + shopRes.status));
+    setStatus('scene + shop saved ✓', 'ok');
   } catch (e) {
     setStatus('save failed', 'err');
     console.error(e);
   }
+}
+
+function cleanShopConfig() {
+  const clean = JSON.parse(JSON.stringify(shopConfig));
+  clean.version = 2;
+  clean.cosmetics = clean.cosmetics && typeof clean.cosmetics === 'object' ? clean.cosmetics : { items: {} };
+  clean.cosmetics.items = clean.cosmetics.items && typeof clean.cosmetics.items === 'object' ? clean.cosmetics.items : {};
+  for (const c of COSMETIC_CATALOG) {
+    const item = clean.cosmetics.items[c.id] || (clean.cosmetics.items[c.id] = {});
+    item.enabled = item.enabled !== false;
+    item.cost = c.starter ? 0 : Math.max(0, Math.round(Number(item.cost) || 0));
+  }
+  for (const u of Object.values(clean.upgrades)) {
+    u.enabled = u.enabled !== false;
+    u.costs = (u.costs || []).map(v => Math.max(0, Math.round(Number(v) || 0)));
+    if (Object.prototype.hasOwnProperty.call(u, 'pct')) u.pct = Math.max(0, Number(u.pct) || 0);
+  }
+  const kb = clean.upgrades.knockback;
+  kb.stunBaseMs = Math.max(0, Math.round(Number(kb.stunBaseMs) || 0));
+  kb.stunMaxMs = Math.max(kb.stunBaseMs, Math.round(Number(kb.stunMaxMs) || 0));
+  return clean;
+}
+
+function normalizeEditorShopConfig(raw) {
+  const out = JSON.parse(JSON.stringify(DEFAULT_SHOP_CONFIG));
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const srcCos = src.cosmetics && typeof src.cosmetics === 'object' ? src.cosmetics : {};
+  const srcItems = srcCos.items && typeof srcCos.items === 'object' ? srcCos.items : null;
+  // Backward compatibility with the previous {enabled,cost} cosmetics shape.
+  for (const c of COSMETIC_CATALOG) {
+    const target = out.cosmetics.items[c.id];
+    const incoming = srcItems && srcItems[c.id] && typeof srcItems[c.id] === 'object' ? srcItems[c.id] : null;
+    if (incoming) {
+      target.enabled = incoming.enabled !== false;
+      const n = Number(incoming.cost);
+      if (Number.isFinite(n)) target.cost = c.starter ? 0 : Math.max(0, Math.round(n));
+    } else if (!c.starter && (Object.prototype.hasOwnProperty.call(srcCos, 'enabled') || Object.prototype.hasOwnProperty.call(srcCos, 'cost'))) {
+      target.enabled = srcCos.enabled !== false;
+      const n = Number(srcCos.cost);
+      if (Number.isFinite(n)) target.cost = Math.max(0, Math.round(n));
+    }
+  }
+  const srcUp = src.upgrades && typeof src.upgrades === 'object' ? src.upgrades : {};
+  for (const [key, fallback] of Object.entries(DEFAULT_SHOP_CONFIG.upgrades)) {
+    const incoming = srcUp[key] && typeof srcUp[key] === 'object' ? srcUp[key] : {};
+    const u = out.upgrades[key];
+    u.enabled = incoming.enabled !== false;
+    if (Array.isArray(incoming.costs) && incoming.costs.length) {
+      const costs = incoming.costs.map(Number).filter(Number.isFinite).map(v => Math.max(0, Math.round(v)));
+      if (costs.length) u.costs = costs;
+    }
+    if (Object.prototype.hasOwnProperty.call(fallback, 'pct')) {
+      const pct = Number(incoming.pct);
+      if (Number.isFinite(pct)) u.pct = Math.max(0, pct);
+    }
+  }
+  const kbIn = srcUp.knockback || {};
+  const b = Number(kbIn.stunBaseMs), m = Number(kbIn.stunMaxMs);
+  if (Number.isFinite(b)) out.upgrades.knockback.stunBaseMs = Math.max(0, Math.round(b));
+  if (Number.isFinite(m)) out.upgrades.knockback.stunMaxMs = Math.max(out.upgrades.knockback.stunBaseMs, Math.round(m));
+  return out;
+}
+
+async function loadShop(announce) {
+  try {
+    const res = await fetch('/shop.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    shopConfig = normalizeEditorShopConfig(await res.json());
+    if (!selection) renderInspector();
+    if (shopSettingsOverlay && shopSettingsOverlay.classList.contains('open')) renderShopSettings();
+    return true;
+  } catch (e) {
+    shopConfig = normalizeEditorShopConfig(DEFAULT_SHOP_CONFIG);
+    console.warn('loadShop:', e);
+    if (announce) setStatus('shop reload failed', 'err');
+    return false;
+  }
+}
+
+async function loadAll(announce) {
+  const results = await Promise.all([loadScene(false), loadShop(false)]);
+  selection = null;
+  renderInspector();
+  if (announce) setStatus('scene + shop reloaded ✓', 'ok');
+  return results;
 }
 
 function exportScene() {
@@ -984,9 +1375,11 @@ async function loadScene(announce) {
     selection = null;
     renderInspector();
     if (announce) setStatus('reloaded ✓', 'ok');
+    return true;
   } catch (e) {
     if (announce) setStatus('reload failed', 'err');
     console.warn('loadScene:', e);
+    return false;
   }
 }
 
@@ -1010,7 +1403,7 @@ window.addEventListener('keydown', (e) => {
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveScene(); return; }
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelection(); return; }
-  if (e.key === 'Escape') { selection = null; activeAsset = null; document.querySelectorAll('.file-row.active').forEach(t => t.classList.remove('active')); renderInspector(); return; }
+  if (e.key === 'Escape') { if (shopSettingsOverlay.classList.contains('open')) { closeShopSettings(); return; } selection = null; activeAsset = null; document.querySelectorAll('.file-row.active').forEach(t => t.classList.remove('active')); renderInspector(); return; }
 
   const map = { v: 'select', b: 'hitbox', c: 'coin', p: 'playerStart', h: 'pan' };
   if (map[e.key.toLowerCase()]) { tool = map[e.key.toLowerCase()]; syncToolButtons(); return; }
@@ -1036,7 +1429,7 @@ window.addEventListener('keyup', (e) => {
 // ============================================================================
 resize();
 loadAssets();
-loadScene(false).then(() => { fitView(); renderInspector(); });
+loadAll(false).then(() => { fitView(); renderInspector(); });
 syncToolButtons();
 updateZoomLabel();
 requestAnimationFrame(render);

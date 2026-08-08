@@ -1,0 +1,100 @@
+{
+  "version": 2,
+  "cosmetics": {
+    "items": {
+      "classic": {
+        "enabled": true,
+        "cost": 0
+      },
+      "mob1": {
+        "enabled": true,
+        "cost": 10
+      },
+      "mob2": {
+        "enabled": true,
+        "cost": 10
+      },
+      "mob3": {
+        "enabled": true,
+        "cost": 10
+      },
+      "monster1": {
+        "enabled": true,
+        "cost": 10
+      },
+      "monster2": {
+        "enabled": true,
+        "cost": 10
+      },
+      "monster3": {
+        "enabled": true,
+        "cost": 10
+      },
+      "enemy1": {
+        "enabled": true,
+        "cost": 10
+      },
+      "enemy2": {
+        "enabled": true,
+        "cost": 10
+      },
+      "enemy3": {
+        "enabled": true,
+        "cost": 10
+      }
+    }
+  },
+  "upgrades": {
+    "jump": {
+      "enabled": true,
+      "costs": [
+        5,
+        10,
+        15
+      ],
+      "pct": 10
+    },
+    "dash": {
+      "enabled": true,
+      "costs": [
+        5,
+        10,
+        15
+      ],
+      "pct": 10
+    },
+    "knockback": {
+      "enabled": true,
+      "costs": [
+        5,
+        10,
+        15
+      ],
+      "pct": 15,
+      "stunBaseMs": 500,
+      "stunMaxMs": 1500
+    },
+    "health": {
+      "enabled": true,
+      "costs": [
+        5,
+        10,
+        15
+      ]
+    },
+    "doubleJump": {
+      "enabled": true,
+      "costs": [
+        20
+      ]
+    },
+    "invisibility": {
+      "enabled": true,
+      "costs": [
+        10,
+        20,
+        30
+      ]
+    }
+  }
+}
