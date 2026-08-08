@@ -5,15 +5,1483 @@
     "height": 500
   },
   "playerStart": {
-    "x": 1310,
-    "y": 480
+    "x": 1610,
+    "y": 460
   },
   "ground": {
     "sprite": "/assets/obstacles/grass.png",
-    "height": 14,
+    "height": 1,
     "tileWidth": 40
   },
-  "props": [],
-  "hitboxes": [],
-  "coins": []
+  "props": [
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 0,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 20,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 40,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 60,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 80,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 100,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 120,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 140,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 160,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 180,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 200,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 220,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 240,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 260,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 280,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 300,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 360,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 380,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 400,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 420,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 440,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 460,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 480,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 500,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 520,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 540,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 560,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 580,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 600,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 620,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 640,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 660,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 680,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 700,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 720,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 740,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 760,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 780,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 800,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 820,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 840,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 860,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 880,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 900,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 920,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 940,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 960,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 980,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1000,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1020,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1040,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1060,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1080,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1100,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1120,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1140,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1160,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1180,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1200,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1220,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1240,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1260,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1280,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1300,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1320,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1340,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1360,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1380,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1400,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1420,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1440,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1460,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1480,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1500,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1520,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1540,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1560,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1580,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1600,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1620,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1640,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1660,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1680,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1700,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1720,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1740,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1760,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1780,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1800,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1820,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1840,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1860,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1880,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1900,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1920,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1940,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1960,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 1980,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2000,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2020,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2040,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2060,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2080,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2100,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2120,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2140,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2160,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2180,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2200,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2220,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2240,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2260,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2280,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2300,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2320,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2340,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2360,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2380,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2400,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2420,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2440,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2460,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2480,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2500,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2520,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2540,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2560,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2580,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2600,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2620,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2640,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2660,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2680,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2700,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2720,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2740,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2760,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2780,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2800,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2820,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2840,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2860,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2880,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2900,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2920,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2940,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2960,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 2980,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_29.png",
+      "x": 90,
+      "y": 430,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_30.png",
+      "x": 110,
+      "y": 430,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_31.png",
+      "x": 130,
+      "y": 430,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_08.png",
+      "x": 0,
+      "y": 380,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_54.png",
+      "x": 20,
+      "y": 380,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_45.png",
+      "x": 200,
+      "y": 380,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_54.png",
+      "x": 510,
+      "y": 370,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_29.png",
+      "x": 100,
+      "y": 330,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_31.png",
+      "x": 120,
+      "y": 330,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_49.png",
+      "x": 300,
+      "y": 460,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 340,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_02.png",
+      "x": 320,
+      "y": 480,
+      "width": 20,
+      "height": 22
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_29.png",
+      "x": 370,
+      "y": 410,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_47.png",
+      "x": 390,
+      "y": 410,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_49.png",
+      "x": 390,
+      "y": 390,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_31.png",
+      "x": 410,
+      "y": 410,
+      "width": 22,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_45.png",
+      "x": 490,
+      "y": 370,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_49.png",
+      "x": 570,
+      "y": 340,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_19.png",
+      "x": 570,
+      "y": 360,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_21.png",
+      "x": 630,
+      "y": 360,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_49.png",
+      "x": 630,
+      "y": 340,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_31.png",
+      "x": 740,
+      "y": 420,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_30.png",
+      "x": 720,
+      "y": 420,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_29.png",
+      "x": 700,
+      "y": 420,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_31.png",
+      "x": 740,
+      "y": 360,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_30.png",
+      "x": 720,
+      "y": 360,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_29.png",
+      "x": 700,
+      "y": 360,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_49.png",
+      "x": 800,
+      "y": 360,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_50.png",
+      "x": 800,
+      "y": 380,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_51.png",
+      "x": 800,
+      "y": 400,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_54.png",
+      "x": 220,
+      "y": 380,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_30.png",
+      "x": 610,
+      "y": 360,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_28.png",
+      "x": 920,
+      "y": 360,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_31.png",
+      "x": 1040,
+      "y": 420,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_29.png",
+      "x": 1020,
+      "y": 420,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_28.png",
+      "x": 1100,
+      "y": 360,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_31.png",
+      "x": 1210,
+      "y": 320,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_29.png",
+      "x": 1190,
+      "y": 320,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_30.png",
+      "x": 590,
+      "y": 360,
+      "width": 20,
+      "height": 20
+    }
+  ],
+  "hitboxes": [
+    {
+      "x": 0,
+      "y": 480,
+      "width": 3000,
+      "height": 20
+    },
+    {
+      "x": 1190,
+      "y": 320,
+      "width": 40,
+      "height": 20
+    },
+    {
+      "x": 1100,
+      "y": 360,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "x": 1020,
+      "y": 420,
+      "width": 40,
+      "height": 20
+    },
+    {
+      "x": 920,
+      "y": 360,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "x": 800,
+      "y": 360,
+      "width": 20,
+      "height": 60
+    },
+    {
+      "x": 700,
+      "y": 420,
+      "width": 60,
+      "height": 20
+    },
+    {
+      "x": 700,
+      "y": 360,
+      "width": 60,
+      "height": 20
+    },
+    {
+      "x": 570,
+      "y": 340,
+      "width": 20,
+      "height": 40
+    },
+    {
+      "x": 590,
+      "y": 360,
+      "width": 40,
+      "height": 20
+    },
+    {
+      "x": 630,
+      "y": 340,
+      "width": 20,
+      "height": 40
+    },
+    {
+      "x": 500,
+      "y": 370,
+      "width": 20,
+      "height": 10
+    },
+    {
+      "x": 390,
+      "y": 390,
+      "width": 20,
+      "height": 40
+    },
+    {
+      "x": 410,
+      "y": 410,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "x": 370,
+      "y": 410,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "x": 300,
+      "y": 460,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "x": 210,
+      "y": 380,
+      "width": 20,
+      "height": 10
+    },
+    {
+      "x": 90,
+      "y": 430,
+      "width": 60,
+      "height": 20
+    },
+    {
+      "x": 100,
+      "y": 330,
+      "width": 40,
+      "height": 20
+    },
+    {
+      "x": 0,
+      "y": 380,
+      "width": 30,
+      "height": 10
+    }
+  ],
+  "coins": [
+    {
+      "x": 920,
+      "y": 340
+    },
+    {
+      "x": 1200,
+      "y": 300
+    },
+    {
+      "x": 1100,
+      "y": 340
+    },
+    {
+      "x": 800,
+      "y": 340
+    },
+    {
+      "x": 390,
+      "y": 370
+    },
+    {
+      "x": 110,
+      "y": 310
+    },
+    {
+      "x": 0,
+      "y": 360
+    },
+    {
+      "x": 600,
+      "y": 340
+    },
+    {
+      "x": 500,
+      "y": 350
+    }
+  ]
 }
