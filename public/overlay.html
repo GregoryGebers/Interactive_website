@@ -204,7 +204,9 @@
   });
   
 
-  const boxes = [
+  // Collision/crate rectangles. Seeded with the built-in level as a fallback,
+  // then replaced by scene.json in loadScene() below. `let` so that can swap.
+  let boxes = [
     {x: 0, y: 400, width: 20, height: 20},
     {x: 80, y: 450, width: 20, height: 20},
     {x: 100, y: 450, width: 20, height: 20},
@@ -283,13 +285,60 @@
   // down to fit the canvas width. Vertical stays fixed; the same uniform
   // factor is applied to Y so sprites keep their proportions instead of
   // getting squashed.
-  const WORLD_WIDTH = 3000;
-  const WORLD_HEIGHT = 500;
-  const GROUND_GRASS_HEIGHT = 14;
-  const GROUND_TILE_WIDTH = 40;
+  let WORLD_WIDTH = 3000;
+  let WORLD_HEIGHT = 500;
+  let GROUND_GRASS_HEIGHT = 14;
+  let GROUND_TILE_WIDTH = 40;
 
-  // 1920 / 3000 = 0.64 — every world unit is 0.64 overlay pixels.
-  const WORLD_SCALE = canvas.width / WORLD_WIDTH;
+  // 1920 / 3000 = 0.64 — every world unit is 0.64 overlay pixels. Recomputed
+  // in loadScene() if the scene's world width differs from the default.
+  let WORLD_SCALE = canvas.width / WORLD_WIDTH;
+
+  // ---- Scene props (decorations, no collision) ----
+  let props = [];
+  const propImages = {};
+  function getPropImage(src) {
+    if (!propImages[src]) {
+      const im = new Image();
+      im.src = src;
+      propImages[src] = im;
+    }
+    return propImages[src];
+  }
+
+  // Load the level from scene.json — the same file viewer.html and the server
+  // read. On any failure we keep the built-in fallback level so the overlay is
+  // never blank on stream.
+  async function loadScene() {
+    try {
+      const res = await fetch('/scene.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const scene = await res.json();
+      if (scene.world && Number.isFinite(scene.world.width) && Number.isFinite(scene.world.height)) {
+        WORLD_WIDTH = scene.world.width;
+        WORLD_HEIGHT = scene.world.height;
+        WORLD_SCALE = canvas.width / WORLD_WIDTH;
+      }
+      if (Array.isArray(scene.hitboxes)) {
+        boxes = scene.hitboxes
+          .filter(b => b && Number.isFinite(b.x) && Number.isFinite(b.y))
+          .map(b => ({ x: +b.x, y: +b.y, width: +b.width || 20, height: +b.height || 20 }));
+      }
+      if (Array.isArray(scene.props)) {
+        props = scene.props
+          .filter(p => p && p.src && Number.isFinite(p.x) && Number.isFinite(p.y))
+          .map(p => ({ src: p.src, x: +p.x, y: +p.y, width: +p.width || 32, height: +p.height || 32 }));
+      }
+      if (scene.ground) {
+        if (Number.isFinite(scene.ground.height)) GROUND_GRASS_HEIGHT = scene.ground.height;
+        if (Number.isFinite(scene.ground.tileWidth)) GROUND_TILE_WIDTH = scene.ground.tileWidth;
+        if (scene.ground.sprite) grassImg.src = scene.ground.sprite;
+      }
+    } catch (e) {
+      console.warn('Could not load scene.json — using built-in fallback level:', e);
+    }
+  }
+  loadScene();
 
 // Push the rendered world down so jumping players/chat do not get cut off at the top.
 const WORLD_OFFSET_Y = 100;
@@ -475,8 +524,12 @@ const WORLD_OFFSET_Y = 100;
     for (let x = 0; x < WORLD_WIDTH; x += GROUND_TILE_WIDTH) {
       ctx.drawImage(grassImg, x, WORLD_HEIGHT - GROUND_GRASS_HEIGHT, GROUND_TILE_WIDTH, GROUND_GRASS_HEIGHT);
     }
-    for (const box of boxes) {
-      ctx.drawImage(boximg, box.x-5, box.y-5, box.width +12, box.height +12);
+    // Only decorations (props) are drawn. Hitboxes are invisible collision.
+    for (const p of props) {
+      const im = getPropImage(p.src);
+      if (im.complete && im.naturalWidth) {
+        ctx.drawImage(im, p.x, p.y, p.width, p.height);
+      }
     }
     if (coin != null) {
         ctx.drawImage(coinImg, coin.x, coin.y, 20, 20);

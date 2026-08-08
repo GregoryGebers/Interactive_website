@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Scene Builder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #16241a;
+      --panel: #1f3326;
+      --panel-light: #294633;
+      --panel-lighter: #34573f;
+      --slime: #7ed957;
+      --slime-dark: #4c9a2a;
+      --gold: #ffc145;
+      --gold-dark: #c9891f;
+      --cream: #f3f7ee;
+      --muted: #a9c2ac;
+      --danger: #e5573f;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      overflow: hidden; background: var(--ink);
+      font-family: 'Inter', Arial, sans-serif; color: var(--cream);
+    }
+    #app { display: grid; grid-template-rows: auto 1fr; height: 100vh; width: 100vw; }
+
+    /* ---- Top toolbar ---- */
+    #toolbar {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 8px 12px; background: var(--panel);
+      border-bottom: 3px solid var(--ink); z-index: 5;
+    }
+    #toolbar .title {
+      font-family: 'Press Start 2P', monospace; font-size: 12px;
+      color: var(--slime); text-shadow: 2px 2px 0 var(--ink);
+      margin-right: 6px; white-space: nowrap;
+    }
+    .sep { width: 2px; height: 26px; background: var(--panel-lighter); margin: 0 4px; }
+    .btn {
+      font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600;
+      color: var(--ink); background: var(--cream);
+      border: 2px solid var(--ink); box-shadow: 2px 2px 0 var(--ink);
+      padding: 7px 11px; cursor: pointer; user-select: none; white-space: nowrap;
+    }
+    .btn:hover { background: #fff; }
+    .btn:active { transform: translate(2px,2px); box-shadow: 0 0 0 var(--ink); }
+    .btn.tool.active { background: var(--slime); color: var(--ink); box-shadow: 2px 2px 0 var(--slime-dark); }
+    .btn.gold { background: var(--gold); }
+    .btn.gold:hover { background: #ffd370; }
+    .btn.ghost { background: var(--panel-light); color: var(--cream); }
+    .btn.ghost:hover { background: var(--panel-lighter); }
+    .btn.danger { background: var(--danger); color: #fff; }
+    .toolbar-spacer { flex: 1; }
+    #status {
+      font-size: 12px; color: var(--muted); min-width: 90px; text-align: right;
+      transition: color .2s;
+    }
+    #status.ok { color: var(--slime); }
+    #status.err { color: var(--danger); }
+    label.chk { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); cursor: pointer; }
+    label.chk input { accent-color: var(--slime-dark); }
+    .num {
+      width: 58px; font-size: 12px; padding: 5px 6px; color: var(--ink);
+      background: var(--cream); border: 2px solid var(--ink); box-shadow: 2px 2px 0 var(--ink);
+    }
+
+    /* ---- Main area: assets | canvas | inspector ---- */
+    #main { display: grid; grid-template-columns: 240px 1fr 250px; min-height: 0; }
+
+    #assets { background: var(--panel); border-right: 3px solid var(--ink); overflow-y: auto; padding: 10px; }
+    #assets h2, #inspector h2 {
+      font-family: 'Press Start 2P', monospace; font-size: 10px; color: var(--slime);
+      margin: 4px 0 10px; letter-spacing: .5px;
+    }
+    .assets-hint { font-size: 11px; color: var(--muted); margin: 0 0 10px; line-height: 1.5; }
+    /* ---- Asset file tree ---- */
+    #assetList { font-size: 12px; }
+    .tree-children { padding-left: 10px; border-left: 1px solid var(--panel-lighter); margin-left: 7px; }
+    .tree-folder { margin: 1px 0; }
+    .tree-folder > summary {
+      cursor: pointer; font-weight: 700; color: var(--gold);
+      padding: 5px 4px; list-style: none; user-select: none; display: flex; align-items: center; gap: 6px;
+    }
+    .tree-folder > summary:hover { background: var(--panel-light); }
+    .tree-folder > summary::-webkit-details-marker { display: none; }
+    .tree-folder > summary::before { content: '▸'; color: var(--muted); width: 10px; display: inline-block; }
+    .tree-folder[open] > summary::before { content: '▾'; }
+    .tree-folder > summary .count { color: var(--muted); font-weight: 400; font-size: 10px; margin-left: auto; }
+    .file-row {
+      display: flex; align-items: center; gap: 8px; padding: 4px 6px; cursor: grab; user-select: none;
+    }
+    .file-row:hover { background: var(--panel-light); }
+    .file-row.active { background: var(--slime-dark); }
+    .file-row .fr-thumb {
+      width: 30px; height: 30px; flex: none; background: var(--panel-light);
+      border: 1px solid var(--ink); display: flex; align-items: center; justify-content: center; overflow: hidden;
+    }
+    .file-row .fr-thumb img { max-width: 100%; max-height: 100%; image-rendering: pixelated; pointer-events: none; }
+    .file-row .fr-name { color: var(--cream); word-break: break-word; }
+
+    #canvasWrap { position: relative; background: #0c130e; overflow: hidden; min-width: 0; }
+    #editorCanvas { position: absolute; top: 0; left: 0; display: block; }
+    #canvasHint {
+      position: absolute; left: 12px; bottom: 10px; font-size: 11px; color: var(--muted);
+      background: rgba(22,36,26,.8); padding: 6px 9px; border: 1px solid var(--panel-lighter);
+      pointer-events: none; line-height: 1.5;
+    }
+    #coords {
+      position: absolute; right: 12px; bottom: 10px; font-size: 11px; color: var(--slime);
+      background: rgba(22,36,26,.8); padding: 6px 9px; border: 1px solid var(--panel-lighter);
+      font-family: 'Press Start 2P', monospace; pointer-events: none;
+    }
+
+    #inspector { background: var(--panel); border-left: 3px solid var(--ink); overflow-y: auto; padding: 12px; }
+    .insp-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .insp-row label { font-size: 11px; color: var(--muted); width: 66px; text-transform: uppercase; letter-spacing: .5px; }
+    .insp-row input { flex: 1; }
+    .insp-empty { font-size: 12px; color: var(--muted); line-height: 1.6; }
+    .badge {
+      display: inline-block; font-family: 'Press Start 2P', monospace; font-size: 9px;
+      padding: 4px 7px; border: 2px solid var(--ink); background: var(--panel-light); color: var(--cream);
+      margin-bottom: 10px;
+    }
+    .badge.prop { background: var(--slime-dark); }
+    .badge.hitbox { background: var(--gold-dark); }
+    .badge.coin { background: var(--gold); color: var(--ink); }
+    .badge.playerStart { background: #3b6ff5; }
+    .insp-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .insp-actions .btn { flex: 1; font-size: 12px; padding: 6px 8px; }
+    .thumb-preview {
+      width: 100%; height: 70px; background: var(--panel-light); border: 2px solid var(--ink);
+      display: flex; align-items: center; justify-content: center; margin-bottom: 10px; overflow: hidden;
+    }
+    .thumb-preview img { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
+    .src-label { font-size: 10px; color: var(--muted); word-break: break-all; margin-bottom: 10px; }
+    .section-divider { height: 2px; background: var(--panel-lighter); margin: 14px 0; }
+    kbd {
+      font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 700; color: var(--ink);
+      background: var(--slime); border: 1px solid var(--ink); border-radius: 3px; padding: 1px 4px;
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <!-- ================= TOOLBAR ================= -->
+  <div id="toolbar">
+    <span class="title">SCENE BUILDER</span>
+    <div class="sep"></div>
+    <button class="btn tool active" data-tool="select" title="Select / move / resize (V)">▻ Select</button>
+    <button class="btn tool" data-tool="hitbox" title="Draw a collision box (B)">▧ Hitbox</button>
+    <button class="btn tool" data-tool="coin" title="Place a coin spawn (C)">● Coin</button>
+    <button class="btn tool" data-tool="playerStart" title="Move the player spawn (P)">⚑ Spawn</button>
+    <button class="btn tool" data-tool="pan" title="Pan the view (hold Space)">✋ Pan</button>
+    <div class="sep"></div>
+    <button class="btn ghost" id="zoomOut" title="Zoom out">−</button>
+    <span id="zoomLabel" style="font-size:12px;color:var(--muted);width:42px;text-align:center;">100%</span>
+    <button class="btn ghost" id="zoomIn" title="Zoom in">+</button>
+    <button class="btn ghost" id="zoomFit" title="Fit world to view">Fit</button>
+    <div class="sep"></div>
+    <label class="chk"><input type="checkbox" id="snapToggle"> Snap</label>
+    <input class="num" id="gridSize" type="number" min="1" max="200" value="10" title="Grid / snap size">
+    <div class="toolbar-spacer"></div>
+    <button class="btn ghost" id="loadBtn" title="Reload scene.json from server">⟳ Reload</button>
+    <button class="btn" id="exportBtn" title="Download scene.json">⭳ Export</button>
+    <button class="btn ghost" id="testBtn" title="Open the game in a new tab">▶ Test</button>
+    <button class="btn gold" id="saveBtn" title="Save to scene.json (Ctrl+S)">💾 Save</button>
+    <span id="status">ready</span>
+  </div>
+
+  <!-- ================= MAIN ================= -->
+  <div id="main">
+    <!-- Asset browser -->
+    <div id="assets">
+      <h2>ASSETS</h2>
+      <p class="assets-hint">Put art in <b>public/assets/edit_assets/</b> (in folders), then <b>Reload</b>. Drag an asset onto the scene, or click it then click the canvas.</p>
+      <div id="assetList"></div>
+    </div>
+
+    <!-- Canvas -->
+    <div id="canvasWrap">
+      <canvas id="editorCanvas"></canvas>
+      <div id="canvasHint">
+        Drag assets in · <kbd>B</kbd> box · <kbd>C</kbd> coin · <kbd>Del</kbd> remove · <kbd>Space</kbd>+drag pan · wheel zoom
+      </div>
+      <div id="coords">0, 0</div>
+    </div>
+
+    <!-- Inspector -->
+    <div id="inspector">
+      <h2>INSPECTOR</h2>
+      <div id="inspBody"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================================
+//  Scene Builder — a visual level editor for the platformer. It reads and
+//  writes the SAME public/scene.json that viewer.html, overlay.html and the
+//  server use, so anything you build here is exactly what the game loads.
+// ============================================================================
+
+// ---- Scene model (the thing we save) ---------------------------------------
+const scene = {
+  version: 1,
+  world: { width: 3000, height: 500 },
+  playerStart: { x: 100, y: 480 },
+  ground: { sprite: '/assets/obstacles/grass.png', height: 14, tileWidth: 40 },
+  props: [],      // { src, x, y, width, height }  — decoration, no collision
+  hitboxes: [],   // { x, y, width, height }        — solid crates / platforms
+  coins: [],      // { x, y }                       — coin spawn points
+};
+
+// ---- View (camera over the world) ------------------------------------------
+const view = { scale: 1, panX: -40, panY: -40 };
+
+// ---- Editor state ----------------------------------------------------------
+let tool = 'select';
+let selection = null;         // { type:'prop'|'hitbox'|'coin'|'playerStart', index }
+let activeAsset = null;       // asset src armed for click-to-place
+let snap = false, gridSize = 10;
+
+const COIN_SIZE = 20;         // matches how the game draws coins
+const HANDLE = 8;             // resize handle size in screen px
+
+const canvas = document.getElementById('editorCanvas');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('canvasWrap');
+const statusEl = document.getElementById('status');
+
+// ---- Shared image cache ----------------------------------------------------
+const imgCache = {};
+function getImg(src) {
+  if (!imgCache[src]) { const im = new Image(); im.src = src; imgCache[src] = im; }
+  return imgCache[src];
+}
+const grassImg = () => getImg(scene.ground.sprite);
+const coinImg = getImg('/assets/obstacles/coin.png');
+
+// ---- Coordinate transforms -------------------------------------------------
+function w2sx(x) { return (x - view.panX) * view.scale; }
+function w2sy(y) { return (y - view.panY) * view.scale; }
+function s2wx(sx) { return sx / view.scale + view.panX; }
+function s2wy(sy) { return sy / view.scale + view.panY; }
+function snapVal(v) { return snap ? Math.round(v / gridSize) * gridSize : Math.round(v); }
+
+function resize() {
+  canvas.width = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+}
+window.addEventListener('resize', resize);
+
+// ---- Status helper ---------------------------------------------------------
+let statusTimer = null;
+function setStatus(msg, kind) {
+  statusEl.textContent = msg;
+  statusEl.className = kind || '';
+  if (statusTimer) clearTimeout(statusTimer);
+  if (kind === 'ok' || kind === 'err') {
+    statusTimer = setTimeout(() => { statusEl.textContent = 'ready'; statusEl.className = ''; }, 2500);
+  }
+}
+
+// ============================================================================
+//  RENDERING
+// ============================================================================
+function render() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const W = scene.world.width, H = scene.world.height;
+
+  // World backdrop
+  ctx.fillStyle = '#101a13';
+  ctx.fillRect(w2sx(0), w2sy(0), W * view.scale, H * view.scale);
+
+  drawGrid();
+
+  // Ground strip
+  const g = grassImg();
+  const gh = scene.ground.height, tw = scene.ground.tileWidth;
+  if (g.complete && g.naturalWidth) {
+    for (let x = 0; x < W; x += tw) {
+      ctx.drawImage(g, w2sx(x), w2sy(H - gh), tw * view.scale, gh * view.scale);
+    }
+  } else {
+    ctx.fillStyle = '#4c9a2a';
+    ctx.fillRect(w2sx(0), w2sy(H - gh), W * view.scale, gh * view.scale);
+  }
+
+  // Props
+  scene.props.forEach((p, i) => {
+    const im = getImg(p.src);
+    // Adopt natural size the first time the image is known, if not set yet.
+    if ((!p.width || !p.height) && im.complete && im.naturalWidth) {
+      p.width = im.naturalWidth; p.height = im.naturalHeight;
+    }
+    if (im.complete && im.naturalWidth) {
+      ctx.drawImage(im, w2sx(p.x), w2sy(p.y), (p.width || 32) * view.scale, (p.height || 32) * view.scale);
+    } else {
+      ctx.fillStyle = 'rgba(126,217,87,.25)';
+      ctx.fillRect(w2sx(p.x), w2sy(p.y), (p.width || 32) * view.scale, (p.height || 32) * view.scale);
+    }
+    if (selection && selection.type === 'prop' && selection.index === i) drawSelection(p);
+  });
+
+  // Hitboxes are INVISIBLE collision in the game, so here we only draw an
+  // editing overlay — a translucent fill + dashed outline — to mark the solid
+  // bounds. Nothing of this is rendered in viewer.html / overlay.html.
+  scene.hitboxes.forEach((b, i) => {
+    const sx = w2sx(b.x), sy = w2sy(b.y), sw = b.width * view.scale, sh = b.height * view.scale;
+    ctx.fillStyle = 'rgba(255,193,69,.16)';
+    ctx.fillRect(sx, sy, sw, sh);
+    ctx.strokeStyle = 'rgba(255,193,69,.9)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 3]);
+    ctx.strokeRect(sx, sy, sw, sh);
+    ctx.setLineDash([]);
+    if (selection && selection.type === 'hitbox' && selection.index === i) drawSelection(b);
+  });
+
+  // Coins
+  scene.coins.forEach((c, i) => {
+    if (coinImg.complete && coinImg.naturalWidth) {
+      ctx.drawImage(coinImg, w2sx(c.x), w2sy(c.y), COIN_SIZE * view.scale, COIN_SIZE * view.scale);
+    } else {
+      ctx.fillStyle = '#ffc145';
+      ctx.beginPath();
+      ctx.arc(w2sx(c.x + COIN_SIZE / 2), w2sy(c.y + COIN_SIZE / 2), (COIN_SIZE / 2) * view.scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (selection && selection.type === 'coin' && selection.index === i) {
+      ctx.strokeStyle = '#7ed957'; ctx.lineWidth = 2;
+      ctx.strokeRect(w2sx(c.x) - 2, w2sy(c.y) - 2, COIN_SIZE * view.scale + 4, COIN_SIZE * view.scale + 4);
+    }
+  });
+
+  // Player start marker
+  drawPlayerStart();
+
+  // World border
+  ctx.strokeStyle = '#5a7a63'; ctx.lineWidth = 2;
+  ctx.strokeRect(w2sx(0), w2sy(0), W * view.scale, H * view.scale);
+
+  requestAnimationFrame(render);
+}
+
+function drawGrid() {
+  if (view.scale < 0.15) return;
+  const W = scene.world.width, H = scene.world.height;
+  const step = gridSize > 0 ? gridSize : 10;
+  // Only draw grid if lines aren't too dense on screen.
+  if (step * view.scale >= 6) {
+    ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = 0; x <= W; x += step) { ctx.moveTo(w2sx(x), w2sy(0)); ctx.lineTo(w2sx(x), w2sy(H)); }
+    for (let y = 0; y <= H; y += step) { ctx.moveTo(w2sx(0), w2sy(y)); ctx.lineTo(w2sx(W), w2sy(y)); }
+    ctx.stroke();
+  }
+}
+
+function drawSelection(r) {
+  ctx.strokeStyle = '#7ed957'; ctx.lineWidth = 2;
+  ctx.strokeRect(w2sx(r.x), w2sy(r.y), r.width * view.scale, r.height * view.scale);
+  // Handles
+  ctx.fillStyle = '#7ed957';
+  for (const h of handlePositions(r)) {
+    ctx.fillRect(h.sx - HANDLE / 2, h.sy - HANDLE / 2, HANDLE, HANDLE);
+  }
+}
+
+function handlePositions(r) {
+  const x1 = w2sx(r.x), y1 = w2sy(r.y);
+  const x2 = w2sx(r.x + r.width), y2 = w2sy(r.y + r.height);
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  return [
+    { id: 'nw', sx: x1, sy: y1 }, { id: 'n', sx: mx, sy: y1 }, { id: 'ne', sx: x2, sy: y1 },
+    { id: 'w', sx: x1, sy: my },                                { id: 'e', sx: x2, sy: my },
+    { id: 'sw', sx: x1, sy: y2 }, { id: 's', sx: mx, sy: y2 }, { id: 'se', sx: x2, sy: y2 },
+  ];
+}
+
+function drawPlayerStart() {
+  const p = scene.playerStart;
+  const sx = w2sx(p.x), sy = w2sy(p.y);
+  const sel = selection && selection.type === 'playerStart';
+  // Body box (20x20 like the player)
+  ctx.strokeStyle = sel ? '#7ed957' : '#3b6ff5';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(sx, sy, 20 * view.scale, 20 * view.scale);
+  // Flag
+  ctx.fillStyle = sel ? '#7ed957' : '#3b6ff5';
+  ctx.fillRect(sx, sy - 22, 2, 22);
+  ctx.beginPath();
+  ctx.moveTo(sx + 2, sy - 22); ctx.lineTo(sx + 16, sy - 17); ctx.lineTo(sx + 2, sy - 12);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 9px Inter, sans-serif'; ctx.textBaseline = 'bottom';
+  ctx.fillText('P1', sx + 4, sy - 23);
+}
+
+// ============================================================================
+//  HIT TESTING
+// ============================================================================
+function rectOf(type, index) {
+  if (type === 'prop') return scene.props[index];
+  if (type === 'hitbox') return scene.hitboxes[index];
+  if (type === 'coin') { const c = scene.coins[index]; return { x: c.x, y: c.y, width: COIN_SIZE, height: COIN_SIZE }; }
+  if (type === 'playerStart') { const p = scene.playerStart; return { x: p.x, y: p.y, width: 20, height: 20 }; }
+  return null;
+}
+function pointInRect(wx, wy, r) {
+  return wx >= r.x && wx <= r.x + r.width && wy >= r.y && wy <= r.y + r.height;
+}
+// Topmost object under a world point. Order matters: coins/spawn (small) first,
+// then hitboxes, then props (usually the biggest, so they don't steal clicks).
+function hitTest(wx, wy) {
+  for (let i = scene.coins.length - 1; i >= 0; i--) if (pointInRect(wx, wy, rectOf('coin', i))) return { type: 'coin', index: i };
+  if (pointInRect(wx, wy, rectOf('playerStart', 0))) return { type: 'playerStart', index: 0 };
+  for (let i = scene.hitboxes.length - 1; i >= 0; i--) if (pointInRect(wx, wy, scene.hitboxes[i])) return { type: 'hitbox', index: i };
+  for (let i = scene.props.length - 1; i >= 0; i--) if (pointInRect(wx, wy, scene.props[i])) return { type: 'prop', index: i };
+  return null;
+}
+// Which resize handle (if any) is under the mouse for the current selection.
+function handleAt(sx, sy) {
+  if (!selection || selection.type === 'coin' || selection.type === 'playerStart') return null;
+  const r = rectOf(selection.type, selection.index);
+  if (!r) return null;
+  for (const h of handlePositions(r)) {
+    if (Math.abs(sx - h.sx) <= HANDLE && Math.abs(sy - h.sy) <= HANDLE) return h.id;
+  }
+  return null;
+}
+
+// ============================================================================
+//  MOUSE INTERACTION
+// ============================================================================
+let drag = null; // { mode, handle, startWX, startWY, orig, panX, panY }
+let spaceDown = false;
+let mouseWX = 0, mouseWY = 0;
+const coordsEl = document.getElementById('coords');
+
+function getMouse(e) {
+  const rect = canvas.getBoundingClientRect();
+  return { sx: e.clientX - rect.left, sy: e.clientY - rect.top };
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  const { sx, sy } = getMouse(e);
+  const wx = s2wx(sx), wy = s2wy(sy);
+
+  // Panning: middle mouse, or space held, or the Pan tool.
+  if (e.button === 1 || spaceDown || tool === 'pan') {
+    drag = { mode: 'pan', startSX: sx, startSY: sy, panX: view.panX, panY: view.panY };
+    e.preventDefault();
+    return;
+  }
+
+  if (tool === 'select') {
+    // First, a resize handle on the current selection.
+    const h = handleAt(sx, sy);
+    if (h) {
+      drag = { mode: 'resize', handle: h, startWX: wx, startWY: wy, orig: { ...rectOf(selection.type, selection.index) } };
+      return;
+    }
+    const hit = hitTest(wx, wy);
+    selection = hit;
+    renderInspector();
+    if (hit) {
+      const r = rectOf(hit.type, hit.index);
+      drag = { mode: 'move', startWX: wx, startWY: wy, orig: { x: r.x, y: r.y } };
+    }
+    return;
+  }
+
+  if (tool === 'hitbox') {
+    const x = snapVal(wx), y = snapVal(wy);
+    scene.hitboxes.push({ x, y, width: 0, height: 0 });
+    selection = { type: 'hitbox', index: scene.hitboxes.length - 1 };
+    drag = { mode: 'draw', startWX: x, startWY: y };
+    renderInspector();
+    return;
+  }
+
+  if (tool === 'coin') {
+    const x = snapVal(wx - COIN_SIZE / 2), y = snapVal(wy - COIN_SIZE / 2);
+    scene.coins.push({ x, y });
+    selection = { type: 'coin', index: scene.coins.length - 1 };
+    renderInspector();
+    return;
+  }
+
+  if (tool === 'playerStart') {
+    scene.playerStart.x = snapVal(wx - 10);
+    scene.playerStart.y = snapVal(wy - 10);
+    selection = { type: 'playerStart', index: 0 };
+    renderInspector();
+    return;
+  }
+});
+
+window.addEventListener('mousemove', (e) => {
+  const { sx, sy } = getMouse(e);
+  mouseWX = s2wx(sx); mouseWY = s2wy(sy);
+  coordsEl.textContent = `${Math.round(mouseWX)}, ${Math.round(mouseWY)}`;
+  if (!drag) return;
+
+  if (drag.mode === 'pan') {
+    view.panX = drag.panX - (sx - drag.startSX) / view.scale;
+    view.panY = drag.panY - (sy - drag.startSY) / view.scale;
+    return;
+  }
+
+  const wx = s2wx(sx), wy = s2wy(sy);
+
+  if (drag.mode === 'move') {
+    const dx = wx - drag.startWX, dy = wy - drag.startWY;
+    const nx = snapVal(drag.orig.x + dx), ny = snapVal(drag.orig.y + dy);
+    if (selection.type === 'coin') { scene.coins[selection.index].x = nx; scene.coins[selection.index].y = ny; }
+    else if (selection.type === 'playerStart') { scene.playerStart.x = nx; scene.playerStart.y = ny; }
+    else { const r = rectOf(selection.type, selection.index); r.x = nx; r.y = ny; }
+    renderInspector();
+    return;
+  }
+
+  if (drag.mode === 'draw') {
+    const b = scene.hitboxes[selection.index];
+    const x2 = snapVal(wx), y2 = snapVal(wy);
+    b.x = Math.min(drag.startWX, x2); b.y = Math.min(drag.startWY, y2);
+    b.width = Math.abs(x2 - drag.startWX); b.height = Math.abs(y2 - drag.startWY);
+    renderInspector();
+    return;
+  }
+
+  if (drag.mode === 'resize') {
+    const r = rectOf(selection.type, selection.index);
+    const o = drag.orig;
+    let left = o.x, top = o.y, right = o.x + o.width, bottom = o.y + o.height;
+    const nx = snapVal(wx), ny = snapVal(wy);
+    if (drag.handle.includes('w')) left = nx;
+    if (drag.handle.includes('e')) right = nx;
+    if (drag.handle.includes('n')) top = ny;
+    if (drag.handle.includes('s')) bottom = ny;
+    r.x = Math.min(left, right); r.y = Math.min(top, bottom);
+    r.width = Math.max(1, Math.abs(right - left)); r.height = Math.max(1, Math.abs(bottom - top));
+    renderInspector();
+    return;
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  if (drag && drag.mode === 'draw') {
+    // Discard a zero-size box (a plain click with the hitbox tool).
+    const b = scene.hitboxes[selection.index];
+    if (b.width < 2 || b.height < 2) {
+      // Give a click a sensible default box instead of deleting it.
+      b.width = b.width < 2 ? 40 : b.width;
+      b.height = b.height < 2 ? 20 : b.height;
+    }
+    renderInspector();
+  }
+  drag = null;
+});
+
+// Zoom with the wheel, centered on the cursor.
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const { sx, sy } = getMouse(e);
+  const wxBefore = s2wx(sx), wyBefore = s2wy(sy);
+  const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+  view.scale = Math.max(0.1, Math.min(6, view.scale * factor));
+  // Keep the world point under the cursor fixed while zooming.
+  view.panX = wxBefore - sx / view.scale;
+  view.panY = wyBefore - sy / view.scale;
+  updateZoomLabel();
+}, { passive: false });
+
+// ---- Drag & drop assets from the panel onto the canvas ----
+canvas.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+canvas.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const src = e.dataTransfer.getData('text/asset-src');
+  if (!src) return;
+  const { sx, sy } = getMouse(e);
+  placeProp(src, s2wx(sx), s2wy(sy), true);
+});
+
+function placeProp(src, wx, wy, centered) {
+  const im = getImg(src);
+  const w = im.naturalWidth || 32, h = im.naturalHeight || 32;
+  const prop = {
+    src,
+    x: snapVal(centered ? wx - w / 2 : wx),
+    y: snapVal(centered ? wy - h / 2 : wy),
+    width: im.naturalWidth || 0,
+    height: im.naturalHeight || 0,
+  };
+  scene.props.push(prop);
+  selection = { type: 'prop', index: scene.props.length - 1 };
+  tool = 'select'; syncToolButtons();
+  renderInspector();
+}
+
+// ============================================================================
+//  INSPECTOR
+// ============================================================================
+const inspBody = document.getElementById('inspBody');
+
+function renderInspector() {
+  if (!selection) { renderWorldInspector(); return; }
+  const t = selection.type;
+  let html = `<span class="badge ${t}">${t}</span>`;
+
+  if (t === 'prop') {
+    const p = scene.props[selection.index];
+    html += `<div class="thumb-preview"><img src="${p.src}"></div>`;
+    html += `<div class="src-label">${p.src}</div>`;
+    html += numRow('X', 'prop-x', p.x) + numRow('Y', 'prop-y', p.y);
+    html += numRow('Width', 'prop-w', p.width) + numRow('Height', 'prop-h', p.height);
+    html += `<div class="insp-actions">
+      <button class="btn ghost" data-act="front">Front</button>
+      <button class="btn ghost" data-act="back">Back</button>
+      <button class="btn ghost" data-act="natural">Reset size</button>
+      <button class="btn danger" data-act="delete">Delete</button></div>`;
+  } else if (t === 'hitbox') {
+    const b = scene.hitboxes[selection.index];
+    html += numRow('X', 'hb-x', b.x) + numRow('Y', 'hb-y', b.y);
+    html += numRow('Width', 'hb-w', b.width) + numRow('Height', 'hb-h', b.height);
+    html += `<div class="insp-actions"><button class="btn danger" data-act="delete">Delete</button></div>`;
+  } else if (t === 'coin') {
+    const c = scene.coins[selection.index];
+    html += numRow('X', 'coin-x', c.x) + numRow('Y', 'coin-y', c.y);
+    html += `<div class="insp-actions"><button class="btn danger" data-act="delete">Delete</button></div>`;
+  } else if (t === 'playerStart') {
+    const p = scene.playerStart;
+    html += numRow('X', 'ps-x', p.x) + numRow('Y', 'ps-y', p.y);
+    html += `<p class="insp-empty">The player spawns here on join. There is exactly one spawn.</p>`;
+  }
+  inspBody.innerHTML = html;
+  wireInspector();
+}
+
+function renderWorldInspector() {
+  inspBody.innerHTML = `
+    <p class="insp-empty">Nothing selected. Click an object to edit it, or use the tools above to add new ones.</p>
+    <div class="section-divider"></div>
+    <span class="badge">WORLD</span>
+    ${numRow('Width', 'world-w', scene.world.width)}
+    ${numRow('Height', 'world-h', scene.world.height)}
+    <div class="section-divider"></div>
+    <span class="badge">GROUND</span>
+    ${numRow('Height', 'ground-h', scene.ground.height)}
+    ${numRow('Tile W', 'ground-tw', scene.ground.tileWidth)}
+    <div class="section-divider"></div>
+    <p class="insp-empty">
+      <b>${scene.props.length}</b> props · <b>${scene.hitboxes.length}</b> hitboxes · <b>${scene.coins.length}</b> coins
+    </p>`;
+  wireInspector();
+}
+
+function numRow(label, id, val) {
+  return `<div class="insp-row"><label>${label}</label><input class="num" style="width:auto;flex:1" type="number" id="${id}" value="${Math.round(val || 0)}"></div>`;
+}
+
+function wireInspector() {
+  const bind = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('input', () => fn(parseFloat(el.value) || 0)); };
+  // Selection fields
+  if (selection && selection.type === 'prop') {
+    const p = scene.props[selection.index];
+    bind('prop-x', v => p.x = v); bind('prop-y', v => p.y = v);
+    bind('prop-w', v => p.width = v); bind('prop-h', v => p.height = v);
+  } else if (selection && selection.type === 'hitbox') {
+    const b = scene.hitboxes[selection.index];
+    bind('hb-x', v => b.x = v); bind('hb-y', v => b.y = v);
+    bind('hb-w', v => b.width = v); bind('hb-h', v => b.height = v);
+  } else if (selection && selection.type === 'coin') {
+    const c = scene.coins[selection.index];
+    bind('coin-x', v => c.x = v); bind('coin-y', v => c.y = v);
+  } else if (selection && selection.type === 'playerStart') {
+    bind('ps-x', v => scene.playerStart.x = v); bind('ps-y', v => scene.playerStart.y = v);
+  } else {
+    bind('world-w', v => scene.world.width = Math.max(100, v));
+    bind('world-h', v => scene.world.height = Math.max(100, v));
+    bind('ground-h', v => scene.ground.height = v);
+    bind('ground-tw', v => scene.ground.tileWidth = Math.max(1, v));
+  }
+  // Action buttons
+  inspBody.querySelectorAll('[data-act]').forEach(btn => {
+    btn.addEventListener('click', () => inspectorAction(btn.dataset.act));
+  });
+}
+
+function inspectorAction(act) {
+  if (!selection) return;
+  if (act === 'delete') { deleteSelection(); return; }
+  if (selection.type !== 'prop') return;
+  const i = selection.index;
+  if (act === 'front') {
+    const [p] = scene.props.splice(i, 1); scene.props.push(p);
+    selection.index = scene.props.length - 1;
+  } else if (act === 'back') {
+    const [p] = scene.props.splice(i, 1); scene.props.unshift(p);
+    selection.index = 0;
+  } else if (act === 'natural') {
+    const p = scene.props[i]; const im = getImg(p.src);
+    if (im.naturalWidth) { p.width = im.naturalWidth; p.height = im.naturalHeight; }
+  }
+  renderInspector();
+}
+
+function deleteSelection() {
+  if (!selection) return;
+  const { type, index } = selection;
+  if (type === 'prop') scene.props.splice(index, 1);
+  else if (type === 'hitbox') scene.hitboxes.splice(index, 1);
+  else if (type === 'coin') scene.coins.splice(index, 1);
+  else return; // player start can't be deleted
+  selection = null;
+  renderInspector();
+}
+
+// ============================================================================
+//  ASSET PANEL
+// ============================================================================
+async function loadAssets() {
+  const listEl = document.getElementById('assetList');
+  try {
+    const res = await fetch('/api/assets');
+    const { assets } = await res.json();
+    if (!assets.length) {
+      listEl.innerHTML = '<p class="assets-hint">No images found. Add art under <b>public/assets/edit_assets/</b> and click Reload.</p>';
+      return;
+    }
+    // Build a nested tree from the path segments after /assets/[edit_assets/],
+    // so the panel mirrors your folder structure exactly.
+    const root = { folders: {}, files: [] };
+    for (const src of assets) {
+      const rel = src.replace(/^\/assets\/(edit_assets\/)?/, '');
+      const parts = rel.split('/');
+      const file = parts.pop();
+      let node = root;
+      for (const seg of parts) {
+        node.folders[seg] = node.folders[seg] || { folders: {}, files: [] };
+        node = node.folders[seg];
+      }
+      node.files.push({ src, name: file });
+    }
+    listEl.innerHTML = renderTree(root, true);
+
+    listEl.querySelectorAll('.file-row').forEach(el => {
+      const src = el.dataset.src;
+      el.addEventListener('dragstart', e => { e.dataTransfer.setData('text/asset-src', src); e.dataTransfer.effectAllowed = 'copy'; });
+      el.addEventListener('click', () => {
+        // Toggle "armed" asset for click-to-place.
+        listEl.querySelectorAll('.file-row.active').forEach(t => t.classList.remove('active'));
+        if (activeAsset === src) { activeAsset = null; }
+        else { activeAsset = src; el.classList.add('active'); setStatus('click canvas to place'); }
+      });
+    });
+  } catch (e) {
+    listEl.innerHTML = '<p class="assets-hint">Could not load assets. Is scene_editor.py running?</p>';
+  }
+}
+
+// How many files sit anywhere beneath this tree node (shown next to folders).
+function countFiles(node) {
+  let n = node.files.length;
+  for (const k in node.folders) n += countFiles(node.folders[k]);
+  return n;
+}
+
+// Recursively render a tree node: folders as collapsible rows (top level open),
+// then each file as a draggable row showing its thumbnail and name.
+function renderTree(node, topLevel) {
+  let html = '';
+  const folderNames = Object.keys(node.folders).sort();
+  folderNames.forEach((name, i) => {
+    const child = node.folders[name];
+    html += `<details class="tree-folder" ${topLevel && i < 4 ? 'open' : ''}>
+      <summary>📁 ${name}<span class="count">${countFiles(child)}</span></summary>
+      <div class="tree-children">${renderTree(child, false)}</div>
+    </details>`;
+  });
+  for (const f of node.files) {
+    const label = f.name.replace(/\.[^.]+$/, '');
+    html += `<div class="file-row" draggable="true" data-src="${f.src}" title="${f.name}">
+      <span class="fr-thumb"><img src="${f.src}" loading="lazy"></span>
+      <span class="fr-name">${label}</span>
+    </div>`;
+  }
+  return html;
+}
+
+// Click-to-place armed asset (in select tool, empty space).
+canvas.addEventListener('click', (e) => {
+  if (!activeAsset) return;
+  if (drag) return;
+  const { sx, sy } = getMouse(e);
+  placeProp(activeAsset, s2wx(sx), s2wy(sy), true);
+  document.querySelectorAll('.file-row.active').forEach(t => t.classList.remove('active'));
+  activeAsset = null;
+});
+
+// ============================================================================
+//  TOOLBAR WIRING
+// ============================================================================
+function syncToolButtons() {
+  document.querySelectorAll('.btn.tool').forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
+  canvas.style.cursor = tool === 'pan' ? 'grab' : (tool === 'select' ? 'default' : 'crosshair');
+}
+document.querySelectorAll('.btn.tool').forEach(b => {
+  b.addEventListener('click', () => { tool = b.dataset.tool; syncToolButtons(); });
+});
+
+function updateZoomLabel() { document.getElementById('zoomLabel').textContent = Math.round(view.scale * 100) + '%'; }
+document.getElementById('zoomIn').addEventListener('click', () => zoomBy(1.2));
+document.getElementById('zoomOut').addEventListener('click', () => zoomBy(1 / 1.2));
+document.getElementById('zoomFit').addEventListener('click', fitView);
+function zoomBy(f) {
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const wx = s2wx(cx), wy = s2wy(cy);
+  view.scale = Math.max(0.1, Math.min(6, view.scale * f));
+  view.panX = wx - cx / view.scale; view.panY = wy - cy / view.scale;
+  updateZoomLabel();
+}
+function fitView() {
+  const pad = 40;
+  const sx = (canvas.width - pad * 2) / scene.world.width;
+  const sy = (canvas.height - pad * 2) / scene.world.height;
+  view.scale = Math.max(0.1, Math.min(6, Math.min(sx, sy)));
+  view.panX = -(canvas.width / view.scale - scene.world.width) / 2;
+  view.panY = -(canvas.height / view.scale - scene.world.height) / 2;
+  updateZoomLabel();
+}
+
+document.getElementById('snapToggle').addEventListener('change', e => snap = e.target.checked);
+document.getElementById('gridSize').addEventListener('input', e => gridSize = Math.max(1, parseInt(e.target.value) || 10));
+
+document.getElementById('saveBtn').addEventListener('click', saveScene);
+document.getElementById('exportBtn').addEventListener('click', exportScene);
+document.getElementById('loadBtn').addEventListener('click', () => loadScene(true));
+document.getElementById('testBtn').addEventListener('click', () => window.open('/viewer.html', '_blank'));
+
+// ============================================================================
+//  SAVE / LOAD / EXPORT
+// ============================================================================
+function cleanScene() {
+  // Emit a tidy, rounded copy so scene.json stays readable.
+  const r = n => Math.round(n);
+  return {
+    version: 1,
+    world: { width: r(scene.world.width), height: r(scene.world.height) },
+    playerStart: { x: r(scene.playerStart.x), y: r(scene.playerStart.y) },
+    ground: { sprite: scene.ground.sprite, height: r(scene.ground.height), tileWidth: r(scene.ground.tileWidth) },
+    props: scene.props.map(p => {
+      // A prop dropped before its image finished loading can still have 0 size.
+      // Resolve to the image's natural size now (or a 32px default), so the
+      // saved scene always has real dimensions the game can draw.
+      let w = p.width, h = p.height;
+      if (!w || !h) { const im = getImg(p.src); w = im.naturalWidth || 32; h = im.naturalHeight || 32; }
+      return { src: p.src, x: r(p.x), y: r(p.y), width: r(w), height: r(h) };
+    }),
+    hitboxes: scene.hitboxes.map(b => ({ x: r(b.x), y: r(b.y), width: r(b.width), height: r(b.height) })),
+    coins: scene.coins.map(c => ({ x: r(c.x), y: r(c.y) })),
+  };
+}
+
+async function saveScene() {
+  setStatus('saving…');
+  try {
+    const res = await fetch('/api/scene', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cleanScene()),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || ('HTTP ' + res.status));
+    setStatus('saved ✓', 'ok');
+  } catch (e) {
+    setStatus('save failed', 'err');
+    console.error(e);
+  }
+}
+
+function exportScene() {
+  const blob = new Blob([JSON.stringify(cleanScene(), null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'scene.json';
+  a.click(); URL.revokeObjectURL(a.href);
+  setStatus('exported ✓', 'ok');
+}
+
+async function loadScene(announce) {
+  try {
+    const res = await fetch('/scene.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const s = await res.json();
+    if (s.world) scene.world = { width: +s.world.width || 3000, height: +s.world.height || 500 };
+    if (s.playerStart) scene.playerStart = { x: +s.playerStart.x || 0, y: +s.playerStart.y || 0 };
+    if (s.ground) scene.ground = {
+      sprite: s.ground.sprite || '/assets/obstacles/grass.png',
+      height: +s.ground.height || 14, tileWidth: +s.ground.tileWidth || 40,
+    };
+    scene.props = Array.isArray(s.props) ? s.props.map(p => ({ src: p.src, x: +p.x, y: +p.y, width: +p.width || 0, height: +p.height || 0 })) : [];
+    scene.hitboxes = Array.isArray(s.hitboxes) ? s.hitboxes.map(b => ({ x: +b.x, y: +b.y, width: +b.width || 20, height: +b.height || 20 })) : [];
+    scene.coins = Array.isArray(s.coins) ? s.coins.map(c => ({ x: +c.x, y: +c.y })) : [];
+    selection = null;
+    renderInspector();
+    if (announce) setStatus('reloaded ✓', 'ok');
+  } catch (e) {
+    if (announce) setStatus('reload failed', 'err');
+    console.warn('loadScene:', e);
+  }
+}
+
+// ============================================================================
+//  KEYBOARD
+// ============================================================================
+window.addEventListener('keydown', (e) => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  if (e.key === ' ' && !typing) { spaceDown = true; if (!drag) canvas.style.cursor = 'grab'; }
+  if (typing) return;
+
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveScene(); return; }
+  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelection(); return; }
+  if (e.key === 'Escape') { selection = null; activeAsset = null; document.querySelectorAll('.file-row.active').forEach(t => t.classList.remove('active')); renderInspector(); return; }
+
+  const map = { v: 'select', b: 'hitbox', c: 'coin', p: 'playerStart', h: 'pan' };
+  if (map[e.key.toLowerCase()]) { tool = map[e.key.toLowerCase()]; syncToolButtons(); return; }
+
+  // Arrow-key nudge of the selection.
+  if (selection && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+    e.preventDefault();
+    const step = e.shiftKey ? 10 : 1;
+    const dx = (e.key === 'ArrowRight' ? step : 0) - (e.key === 'ArrowLeft' ? step : 0);
+    const dy = (e.key === 'ArrowDown' ? step : 0) - (e.key === 'ArrowUp' ? step : 0);
+    if (selection.type === 'coin') { scene.coins[selection.index].x += dx; scene.coins[selection.index].y += dy; }
+    else if (selection.type === 'playerStart') { scene.playerStart.x += dx; scene.playerStart.y += dy; }
+    else { const r = rectOf(selection.type, selection.index); r.x += dx; r.y += dy; }
+    renderInspector();
+  }
+});
+window.addEventListener('keyup', (e) => {
+  if (e.key === ' ') { spaceDown = false; syncToolButtons(); }
+});
+
+// ============================================================================
+//  BOOT
+// ============================================================================
+resize();
+loadAssets();
+loadScene(false).then(() => { fitView(); renderInspector(); });
+syncToolButtons();
+updateZoomLabel();
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

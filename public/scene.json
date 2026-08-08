@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "world": {
+    "width": 3000,
+    "height": 500
+  },
+  "playerStart": {
+    "x": 1310,
+    "y": 480
+  },
+  "ground": {
+    "sprite": "/assets/obstacles/grass.png",
+    "height": 14,
+    "tileWidth": 40
+  },
+  "props": [],
+  "hitboxes": [],
+  "coins": []
+}

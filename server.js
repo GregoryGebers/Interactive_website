@@ -1,10 +1,17 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const http = require('http');
 const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
+
+// The scene (level layout) lives in public/scene.json so the same file can be
+// read by the game (viewer.html / overlay.html), authored in the visual editor
+// (editor.html), and read here on the server for the coin spawn points. Kept as
+// a path constant because several routes below touch it.
+const SCENE_PATH = path.join(__dirname, 'public', 'scene.json');
 
 // ---- Socket.IO server ----------------------------------------------------
 const io = new Server(server, {
@@ -27,6 +34,12 @@ const io = new Server(server, {
 
 // Serve static files from the 'public' directory
 app.use(express.static(path.join(__dirname, 'public')));
+
+// NOTE: the visual scene editor is intentionally NOT part of this public
+// server. It runs as a separate, local-only Python tool (scene_editor.py) so
+// the asset-listing and scene-writing endpoints are never exposed online.
+// This server only READS scene.json (for coin spawns, below) — it never lets
+// a remote client modify the level.
 
 // ---- Host selection --------------------------------------------------------
 // Two people can run this game over their own stream: eberhex and izu_kora.
@@ -278,44 +291,43 @@ function relayToTwitch(username, cleanMessage) {
 // ---- Game state ------------------------------------------------------------
 let players = {};
 
-// Matches the box layout in viewer.html / overlay.html. Keep these three in
-// sync if you ever change the level.
-const coins = [
-  { x: 500, y: 480 },
-  { x: 0, y: 380 },
-  { x: 100, y: 330 },
-  { x: 100, y: 430 },
-  { x: 300, y: 460 },
-  { x: 300, y: 330 },
-  { x: 550, y: 360 },
-  { x: 500, y: 480 },
-  { x: 645, y: 340 },
-  { x: 815, y: 380 },
-  { x: 980, y: 360 },
-
-  // ---- Extended world: second screen (1000-2000) ----
-  { x: 1070, y: 420 },
-  { x: 1160, y: 380 },
-  { x: 1250, y: 340 },
-  { x: 1390, y: 320 },
-  { x: 1510, y: 380 },
-  { x: 1600, y: 320 },
-  { x: 1780, y: 400 },
-  { x: 1870, y: 380 },
+// The coin spawn points come from scene.json (authored in editor.html) so the
+// server, the game, and the overlay all read the SAME level from one file. If
+// the scene can't be read or has no coins, we fall back to this built-in list
+// so the game still works exactly as before.
+const FALLBACK_COINS = [
+  { x: 500, y: 480 }, { x: 0, y: 380 }, { x: 100, y: 330 }, { x: 100, y: 430 },
+  { x: 300, y: 460 }, { x: 300, y: 330 }, { x: 550, y: 360 }, { x: 500, y: 480 },
+  { x: 645, y: 340 }, { x: 815, y: 380 }, { x: 980, y: 360 },
+  { x: 1070, y: 420 }, { x: 1160, y: 380 }, { x: 1250, y: 340 }, { x: 1390, y: 320 },
+  { x: 1510, y: 380 }, { x: 1600, y: 320 }, { x: 1780, y: 400 }, { x: 1870, y: 380 },
   { x: 1960, y: 340 },
-
-  // ---- Extended world: third screen (2000-3000) ----
-  { x: 2050, y: 420 },
-  { x: 2140, y: 380 },
-  { x: 2230, y: 340 },
-  { x: 2420, y: 420 },
-  { x: 2540, y: 380 },
-  { x: 2630, y: 340 },
-  { x: 2730, y: 400 },
-  { x: 2840, y: 360 },
-  { x: 2910, y: 420 },
-  { x: 2980, y: 380 },
+  { x: 2050, y: 420 }, { x: 2140, y: 380 }, { x: 2230, y: 340 }, { x: 2420, y: 420 },
+  { x: 2540, y: 380 }, { x: 2630, y: 340 }, { x: 2730, y: 400 }, { x: 2840, y: 360 },
+  { x: 2910, y: 420 }, { x: 2980, y: 380 },
 ];
+
+// Read + validate coin spawn points from scene.json. Returns null on any
+// problem (missing file, bad JSON, no usable coins) so the caller can fall back.
+function loadCoinsFromScene() {
+  try {
+    const raw = fs.readFileSync(SCENE_PATH, 'utf8');
+    const scene = JSON.parse(raw);
+    if (!scene || !Array.isArray(scene.coins)) return null;
+    const clean = scene.coins
+      .filter(c => c && Number.isFinite(Number(c.x)) && Number.isFinite(Number(c.y)))
+      .map(c => ({ x: Number(c.x), y: Number(c.y) }));
+    return clean.length ? clean : null;
+  } catch (e) {
+    console.warn('[scene] could not load coins from scene.json — using fallback list:', e.message);
+    return null;
+  }
+}
+
+// `let` (not const) so re-saving the scene from the editor can hot-swap the
+// spawn points without a server restart (see POST /api/scene below).
+let coins = loadCoinsFromScene() || FALLBACK_COINS;
+console.log(`[scene] loaded ${coins.length} coin spawn points`);
 
 function pickRandomCoin() {
   return coins[Math.floor(Math.random() * coins.length)];

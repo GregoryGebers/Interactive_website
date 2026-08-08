@@ -535,8 +535,11 @@
     // — not the world — that gets scaled up to fill the browser window.
     // WORLD_WIDTH/HEIGHT and the box layout MUST stay in sync with
     // overlay.html (and the coin spots in server.js).
-    const WORLD_WIDTH = 3000;
-    const WORLD_HEIGHT = 500;
+    // These describe the whole level. They start at the built-in defaults and
+    // are overwritten by scene.json once it loads (see loadScene() below), so
+    // the game plays even if that fetch fails. `let`, not const, for that swap.
+    let WORLD_WIDTH = 3000;
+    let WORLD_HEIGHT = 500;
     const VIEW_WIDTH = 1000;   // world units visible horizontally at once
     const VIEW_HEIGHT = 500;   // full world height is always visible
 
@@ -562,7 +565,9 @@
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    const boxes = [
+    // Collision rectangles. Seeded with the built-in level as a fallback, then
+    // replaced by scene.json in loadScene(). `let` so that swap can happen.
+    let boxes = [
       {x: 0, y: 400, width: 20, height: 20},
       {x: 80, y: 450, width: 20, height: 20},
       {x: 100, y: 450, width: 20, height: 20},
@@ -1269,8 +1274,69 @@
       }
     }
 
-    const GROUND_GRASS_HEIGHT = 14;
-    const GROUND_TILE_WIDTH = 40;
+    let GROUND_GRASS_HEIGHT = 14;
+    let GROUND_TILE_WIDTH = 40;
+
+    // ---- Scene props (decorations) --------------------------------------
+    // Props are purely decorative images (trees, bushes, stones...) placed in
+    // the editor. They have no collision — that's what hitboxes/boxes are for.
+    // Each is { src, x, y, width, height }, drawn in world space.
+    let props = [];
+
+    // One <img> per unique src, lazily created and reused across frames so the
+    // browser isn't asked to reload the same art every draw.
+    const propImages = {};
+    function getPropImage(src) {
+      if (!propImages[src]) {
+        const im = new Image();
+        im.src = src;
+        propImages[src] = im;
+      }
+      return propImages[src];
+    }
+
+    // ---- Load the level from scene.json ---------------------------------
+    // Single source of truth shared with overlay.html and the server. On any
+    // failure we simply keep the built-in fallback level defined above, so the
+    // game is never left blank. Called immediately below.
+    async function loadScene() {
+      try {
+        const res = await fetch('/scene.json', { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const scene = await res.json();
+
+        if (scene.world && Number.isFinite(scene.world.width) && Number.isFinite(scene.world.height)) {
+          WORLD_WIDTH = scene.world.width;
+          WORLD_HEIGHT = scene.world.height;
+        }
+        if (Array.isArray(scene.hitboxes)) {
+          boxes = scene.hitboxes
+            .filter(b => b && Number.isFinite(b.x) && Number.isFinite(b.y))
+            .map(b => ({ x: +b.x, y: +b.y, width: +b.width || 20, height: +b.height || 20 }));
+        }
+        if (Array.isArray(scene.props)) {
+          props = scene.props
+            .filter(p => p && p.src && Number.isFinite(p.x) && Number.isFinite(p.y))
+            .map(p => ({ src: p.src, x: +p.x, y: +p.y, width: +p.width || 32, height: +p.height || 32 }));
+        }
+        if (scene.ground) {
+          if (Number.isFinite(scene.ground.height)) GROUND_GRASS_HEIGHT = scene.ground.height;
+          if (Number.isFinite(scene.ground.tileWidth)) GROUND_TILE_WIDTH = scene.ground.tileWidth;
+          if (scene.ground.sprite) grassImg.src = scene.ground.sprite;
+        }
+        // Only reposition the player to the scene's start if they haven't
+        // already spawned and started playing.
+        if (!hasJoined && scene.playerStart &&
+            Number.isFinite(scene.playerStart.x) && Number.isFinite(scene.playerStart.y)) {
+          player.x = scene.playerStart.x;
+          player.y = scene.playerStart.y;
+        }
+        resizeCanvas(); // world size may have changed
+      } catch (e) {
+        console.warn('Could not load scene.json — using built-in fallback level:', e);
+      }
+    }
+    loadScene();
 
     function drawGrassGround() {
       // The world floor at WORLD_HEIGHT is where players actually land
@@ -1283,8 +1349,13 @@
 
     function setObjects() {
       drawGrassGround();
-      for (const box of boxes) {
-        playObj.drawImage(box_1_img, box.x-5, box.y-5, box.width +12, box.height +12);
+      // Only decorations (props) are drawn. Hitboxes are invisible collision —
+      // put a prop where you want players to see something solid.
+      for (const p of props) {
+        const im = getPropImage(p.src);
+        if (im.complete && im.naturalWidth) {
+          playObj.drawImage(im, p.x, p.y, p.width, p.height);
+        }
       }
       if (coin != null) {
         playObj.drawImage(coinImg, coin.x, coin.y, 20, 20);
