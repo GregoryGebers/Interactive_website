@@ -184,7 +184,7 @@
     <div id="canvasWrap">
       <canvas id="editorCanvas"></canvas>
       <div id="canvasHint">
-        Drag assets in · <kbd>B</kbd> box · <kbd>C</kbd> coin · <kbd>Del</kbd> remove · <kbd>Space</kbd>+drag pan · wheel zoom
+        Drag assets in · <kbd>Ctrl+C</kbd>/<kbd>Ctrl+V</kbd> copy/paste · <kbd>B</kbd> box · <kbd>C</kbd> coin · <kbd>Del</kbd> remove · <kbd>Space</kbd>+drag pan · wheel zoom
       </div>
       <div id="coords">0, 0</div>
     </div>
@@ -223,6 +223,13 @@ let tool = 'select';
 let selection = null;         // { type:'prop'|'hitbox'|'coin'|'playerStart', index }
 let activeAsset = null;       // asset src armed for click-to-place
 let snap = false, gridSize = 10;
+
+// Internal scene clipboard used by Ctrl+C / Ctrl+V.
+// It deliberately copies the whole object so props keep their exact image
+// source + dimensions and hitboxes keep their exact collision dimensions.
+let sceneClipboard = null;    // { type:'prop'|'hitbox'|'coin', data:{...} }
+let pasteCount = 0;           // repeated pastes walk diagonally so copies are visible
+const PASTE_OFFSET = 20;
 
 const COIN_SIZE = 20;         // matches how the game draws coins
 const HANDLE = 8;             // resize handle size in screen px
@@ -621,6 +628,7 @@ function renderInspector() {
     html += numRow('X', 'prop-x', p.x) + numRow('Y', 'prop-y', p.y);
     html += numRow('Width', 'prop-w', p.width) + numRow('Height', 'prop-h', p.height);
     html += `<div class="insp-actions">
+      <button class="btn ghost" data-act="copy">Copy</button>
       <button class="btn ghost" data-act="front">Front</button>
       <button class="btn ghost" data-act="back">Back</button>
       <button class="btn ghost" data-act="natural">Reset size</button>
@@ -629,11 +637,17 @@ function renderInspector() {
     const b = scene.hitboxes[selection.index];
     html += numRow('X', 'hb-x', b.x) + numRow('Y', 'hb-y', b.y);
     html += numRow('Width', 'hb-w', b.width) + numRow('Height', 'hb-h', b.height);
-    html += `<div class="insp-actions"><button class="btn danger" data-act="delete">Delete</button></div>`;
+    html += `<div class="insp-actions">
+      <button class="btn ghost" data-act="copy">Copy</button>
+      <button class="btn danger" data-act="delete">Delete</button>
+    </div>`;
   } else if (t === 'coin') {
     const c = scene.coins[selection.index];
     html += numRow('X', 'coin-x', c.x) + numRow('Y', 'coin-y', c.y);
-    html += `<div class="insp-actions"><button class="btn danger" data-act="delete">Delete</button></div>`;
+    html += `<div class="insp-actions">
+      <button class="btn ghost" data-act="copy">Copy</button>
+      <button class="btn danger" data-act="delete">Delete</button>
+    </div>`;
   } else if (t === 'playerStart') {
     const p = scene.playerStart;
     html += numRow('X', 'ps-x', p.x) + numRow('Y', 'ps-y', p.y);
@@ -696,6 +710,7 @@ function wireInspector() {
 function inspectorAction(act) {
   if (!selection) return;
   if (act === 'delete') { deleteSelection(); return; }
+  if (act === 'copy') { copySelection(); return; }
   if (selection.type !== 'prop') return;
   const i = selection.index;
   if (act === 'front') {
@@ -720,6 +735,66 @@ function deleteSelection() {
   else return; // player start can't be deleted
   selection = null;
   renderInspector();
+}
+
+// Copy the selected scene object into an internal clipboard.
+// Props include src/width/height, so pasted art is exactly the same size.
+// Hitboxes include width/height, so collision geometry is copied exactly too.
+function copySelection() {
+  if (!selection || selection.type === 'playerStart') {
+    setStatus('nothing copyable selected', 'err');
+    return;
+  }
+
+  let source = null;
+  if (selection.type === 'prop') source = scene.props[selection.index];
+  else if (selection.type === 'hitbox') source = scene.hitboxes[selection.index];
+  else if (selection.type === 'coin') source = scene.coins[selection.index];
+
+  if (!source) return;
+
+  sceneClipboard = {
+    type: selection.type,
+    data: { ...source },
+  };
+  pasteCount = 0;
+  setStatus(`${selection.type} copied ✓`, 'ok');
+}
+
+// Paste a fresh object rather than sharing the same JS reference.
+// Each paste is offset from the ORIGINAL copied position so repeated Ctrl+V
+// creates a visible diagonal stack while preserving size and shape exactly.
+function pasteSelection() {
+  if (!sceneClipboard) {
+    setStatus('copy something first', 'err');
+    return;
+  }
+
+  pasteCount += 1;
+  const offset = PASTE_OFFSET * pasteCount;
+  const data = {
+    ...sceneClipboard.data,
+    x: snapVal(sceneClipboard.data.x + offset),
+    y: snapVal(sceneClipboard.data.y + offset),
+  };
+
+  if (sceneClipboard.type === 'prop') {
+    scene.props.push(data);
+    selection = { type: 'prop', index: scene.props.length - 1 };
+  } else if (sceneClipboard.type === 'hitbox') {
+    scene.hitboxes.push(data);
+    selection = { type: 'hitbox', index: scene.hitboxes.length - 1 };
+  } else if (sceneClipboard.type === 'coin') {
+    scene.coins.push(data);
+    selection = { type: 'coin', index: scene.coins.length - 1 };
+  } else {
+    return;
+  }
+
+  tool = 'select';
+  syncToolButtons();
+  renderInspector();
+  setStatus(`${sceneClipboard.type} pasted ✓`, 'ok');
 }
 
 // ============================================================================
@@ -923,6 +998,16 @@ window.addEventListener('keydown', (e) => {
   if (e.key === ' ' && !typing) { spaceDown = true; if (!drag) canvas.style.cursor = 'grab'; }
   if (typing) return;
 
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') { e.preventDefault(); copySelection(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') { e.preventDefault(); pasteSelection(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+    e.preventDefault();
+    if (selection && selection.type !== 'playerStart') {
+      copySelection();
+      pasteSelection();
+    }
+    return;
+  }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveScene(); return; }
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelection(); return; }
   if (e.key === 'Escape') { selection = null; activeAsset = null; document.querySelectorAll('.file-row.active').forEach(t => t.classList.remove('active')); renderInspector(); return; }
