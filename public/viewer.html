@@ -324,6 +324,109 @@
       pointer-events: none;
       z-index: 25;
     }
+
+    /* ---- Slime shop (press P) ---- */
+    #shopOverlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 16, 11, 0.78);
+      z-index: 30;
+      font-family: 'Inter', Arial, sans-serif;
+    }
+    #shopOverlay .shop-box {
+      background: var(--panel);
+      border: 3px solid var(--ink);
+      box-shadow: 8px 8px 0 var(--ink);
+      padding: 20px 22px 22px;
+      width: min(760px, 92vw);
+      max-height: 88vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .shop-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 6px;
+    }
+    .shop-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 16px;
+      color: var(--slime);
+      text-shadow: 2px 2px 0 var(--ink);
+    }
+    .shop-coins {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 11px;
+      color: var(--cream);
+      background: var(--panel-light);
+      border: 2px solid var(--ink);
+      box-shadow: 2px 2px 0 var(--ink);
+      padding: 8px 10px;
+    }
+    .shop-coins b { color: var(--gold); }
+    .shop-header #shopClose { margin-left: auto; }
+    .shop-sub { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+    #shopMsg { color: var(--gold); font-size: 12px; min-height: 14px; margin: 0 0 10px; font-weight: 600; }
+    .shop-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 12px;
+      overflow-y: auto;
+      padding: 4px;
+    }
+    .shop-card {
+      background: var(--panel-light);
+      border: 2px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+      padding: 10px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .shop-card.is-equipped { border-color: var(--slime); box-shadow: 3px 3px 0 var(--slime-dark); }
+    /* Show only the first (front-facing idle) 64x64 frame of the sheet,
+       scaled up crisp — 72/64 = 1.125, so the whole 384x256 sheet scales to
+       432x288 and the top-left frame fills the 72x72 box. */
+    .shop-preview {
+      width: 72px;
+      height: 72px;
+      background-repeat: no-repeat;
+      background-position: 0 0;
+      background-size: 432px 288px;
+      image-rendering: pixelated;
+      background-color: var(--panel);
+      border: 2px solid var(--ink);
+    }
+    .shop-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--cream);
+      text-align: center;
+    }
+    .shop-btn {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 9px;
+      color: var(--ink);
+      background: var(--gold);
+      border: 2px solid var(--ink);
+      box-shadow: 2px 2px 0 var(--ink);
+      padding: 8px 6px;
+      width: 100%;
+      cursor: pointer;
+    }
+    .shop-btn:hover { background: #ffd370; }
+    .shop-btn:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--ink); }
+    .shop-btn.equip { background: var(--slime); }
+    .shop-btn.equip:hover { background: #9be870; }
+    .shop-btn.equipped { background: var(--panel); color: var(--slime); cursor: default; }
+    .shop-btn.equipped:active { transform: none; box-shadow: 2px 2px 0 var(--ink); }
+    .shop-btn.disabled { background: #4a5a4d; color: #8aa08d; cursor: not-allowed; }
+    .shop-btn.disabled:active { transform: none; box-shadow: 2px 2px 0 var(--ink); }
   </style>
 </head>
 
@@ -371,13 +474,29 @@
         <kbd>W</kbd>/<kbd>↑</kbd> to jump (hold for higher) ·
         <kbd>SHIFT</kbd> to dash ·
         <kbd>SPACE</kbd> to attack ·
-        <kbd>T</kbd> to talk
+        <kbd>T</kbd> to talk ·
+        <kbd>P</kbd> for the slime shop
         <br><br>
         When chatting, turn on <b>SAY IN TWITCH CHAT?</b> to send your message to Twitch chat too.
         <br><br>
         Use <b>Interact with Stream</b> in the top-right to control the stream background.
         Then press play in the center of the stream to start it.
       </p>
+    </div>
+  </div>
+
+  <!-- Slime shop — opens on P. Buy cosmetic skins with the coins (score) you
+       collect. Purchases persist; the server authorizes each spend. -->
+  <div id="shopOverlay">
+    <div class="shop-box">
+      <div class="shop-header">
+        <span class="shop-title">SLIME SHOP</span>
+        <span class="shop-coins">COINS <b id="shopCoins">0</b></span>
+        <button id="shopClose" class="pixel-btn pixel-btn-small">CLOSE</button>
+      </div>
+      <p class="shop-sub">Cosmetic skins — 10 coins each. Coins come from your score. Press <b>P</b> to close.</p>
+      <p id="shopMsg"></p>
+      <div id="shopGrid" class="shop-grid"></div>
     </div>
   </div>
 
@@ -697,16 +816,180 @@
     let coyoteTimer = 0, jumpBufferTimer = 0;
     let isDashing = false, dashDir = 1, dashTimer = 0, dashCooldownTimer = 0, canDash = true;
 
-    // Switch the sprite sheet/row only when the pose actually changes, so the
-    // frame cycle isn't reset to 0 every single frame.
-    function setAnim(image, frameCount, frameRow) {
-      if (img !== image || animations.frameRow !== frameRow) {
-        img = image;
+    // Reset the frame cycle only when the pose (frame count or facing row)
+    // actually changes. The sprite SHEET is chosen at draw time from the
+    // player's equipped skin, so this no longer touches the image itself.
+    function setPose(frameCount, frameRow) {
+      if (animations.frameCount !== frameCount || animations.frameRow !== frameRow) {
         animations.frameCount = frameCount;
         animations.frameRow = frameRow;
         animations.currentFrame = 0;
       }
     }
+
+    // ---- Cosmetic slime skins ---------------------------------------------
+    // Every skin is just a pair of sprite sheets in the SAME layout as the
+    // original slime (Idle 6x4 @64px, Run 8x4 @64px), so swapping one in is
+    // purely visual. "classic" is the free default and reuses the already-
+    // loaded idle/run images. Each other skin costs 10 coins.
+    const CHAR_DIR = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1';
+    const P_MOB = '/assets/slimes/craftpix-net-788364-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG';
+    const P_MONSTER = '/assets/slimes/craftpix-net-510319-top-down-pixel-art-slime-monsters-sprite-pack/PNG';
+    const P_ENEMY = '/assets/slimes/craftpix-net-743043-pixel-art-slime-enemies-top-down-sprite-pack/PNG';
+    const bodySheets = (base, n) => ({
+      idle: `${base}/Slime${n}/Parts/Slime${n}_Idle_body.png`,
+      run: `${base}/Slime${n}/Parts/Slime${n}_Run_body.png`,
+    });
+    const SKIN_COST = 10;
+    const SKINS = {
+      classic:  { name: 'Classic Slime',  cost: 0,         idle: `${CHAR_DIR}/Idle/Slime1_Idle_body.png`, run: `${CHAR_DIR}/Run/Slime1_Run_body.png` },
+      mob1:     { name: 'Blue Mob',        cost: SKIN_COST, ...bodySheets(P_MOB, 1) },
+      mob2:     { name: 'Green Mob',       cost: SKIN_COST, ...bodySheets(P_MOB, 2) },
+      mob3:     { name: 'Red Mob',         cost: SKIN_COST, ...bodySheets(P_MOB, 3) },
+      monster1: { name: 'Monster I',       cost: SKIN_COST, ...bodySheets(P_MONSTER, 1) },
+      monster2: { name: 'Monster II',      cost: SKIN_COST, ...bodySheets(P_MONSTER, 2) },
+      monster3: { name: 'Monster III',     cost: SKIN_COST, ...bodySheets(P_MONSTER, 3) },
+      enemy1:   { name: 'Enemy I',         cost: SKIN_COST, ...bodySheets(P_ENEMY, 1) },
+      enemy2:   { name: 'Enemy II',        cost: SKIN_COST, ...bodySheets(P_ENEMY, 2) },
+      enemy3:   { name: 'Enemy III',       cost: SKIN_COST, ...bodySheets(P_ENEMY, 3) },
+    };
+
+    // Lazily loaded sheet pair per skin. "classic" reuses the images the game
+    // already loaded up top so it never re-downloads.
+    const skinSheetCache = { classic: { idle: idleImg, run: runImg } };
+    function skinSheet(id, action) {
+      const key = SKINS[id] ? id : 'classic';
+      let sheets = skinSheetCache[key];
+      if (!sheets) {
+        const s = SKINS[key];
+        sheets = { idle: new Image(), run: new Image() };
+        sheets.idle.src = s.idle;
+        sheets.run.src = s.run;
+        skinSheetCache[key] = sheets;
+      }
+      const want = action === 'run' ? sheets.run : sheets.idle;
+      if (want.complete && want.naturalWidth) return want;
+      // While a freshly-selected skin is still loading, fall back to classic
+      // so the character never flashes a blank frame.
+      const c = skinSheetCache.classic;
+      const cf = action === 'run' ? c.run : c.idle;
+      return (cf.complete && cf.naturalWidth) ? cf : want;
+    }
+
+    // Ownership + equipped choice persist across sessions (coins don't — those
+    // are earned per session). The server still authorizes every purchase.
+    let ownedSkins = new Set(['classic']);
+    let equippedSkin = 'classic';
+    let pendingBuy = null;
+    try {
+      const o = JSON.parse(localStorage.getItem('slimeOwned') || '[]');
+      if (Array.isArray(o)) o.forEach(id => { if (SKINS[id]) ownedSkins.add(id); });
+      const e = localStorage.getItem('slimeEquipped');
+      if (e && SKINS[e]) equippedSkin = e;
+    } catch (e) { /* ignore corrupt storage */ }
+    player.skin = equippedSkin; // apply the saved skin on load
+
+    function persistSkins() {
+      try {
+        localStorage.setItem('slimeOwned', JSON.stringify([...ownedSkins]));
+        localStorage.setItem('slimeEquipped', equippedSkin);
+      } catch (e) { /* storage may be unavailable */ }
+    }
+
+    // Send one move packet right now so other players see a skin change
+    // immediately instead of on the next throttled emit.
+    function emitMoveNow() {
+      socket.emit('move', {
+        x: player.x, y: player.y,
+        frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow: animations.frameRow,
+        username: player.username, color: player.color, emote: player.action, score: player.score, skin: player.skin,
+      });
+    }
+
+    function equipSkin(id) {
+      if (!ownedSkins.has(id)) return;
+      equippedSkin = id;
+      player.skin = id;
+      persistSkins();
+      renderShop();
+      emitMoveNow();
+    }
+
+    // ---- Shop UI (opens on P) ----------------------------------------------
+    let shopOpen = false;
+    const shopOverlay = document.getElementById('shopOverlay');
+    const shopGridEl = document.getElementById('shopGrid');
+    const shopCoinsEl = document.getElementById('shopCoins');
+    const shopMsgEl = document.getElementById('shopMsg');
+    document.getElementById('shopClose').addEventListener('click', closeShop);
+
+    function setShopMsg(t) { shopMsgEl.textContent = t || ''; }
+
+    function renderShop() {
+      if (!shopGridEl) return;
+      shopCoinsEl.textContent = player.score;
+      shopGridEl.innerHTML = Object.entries(SKINS).map(([id, s]) => {
+        const owned = ownedSkins.has(id);
+        const equipped = equippedSkin === id;
+        let btn;
+        if (equipped) btn = `<button class="shop-btn equipped" disabled>EQUIPPED</button>`;
+        else if (owned) btn = `<button class="shop-btn equip" data-equip="${id}">EQUIP</button>`;
+        else {
+          const afford = player.score >= s.cost;
+          btn = `<button class="shop-btn buy ${afford ? '' : 'disabled'}" data-buy="${id}" ${afford ? '' : 'disabled'}>${s.cost} COINS</button>`;
+        }
+        return `<div class="shop-card ${equipped ? 'is-equipped' : ''}">
+          <div class="shop-preview" style="background-image:url('${s.idle}')"></div>
+          <div class="shop-name">${s.name}</div>
+          ${btn}
+        </div>`;
+      }).join('');
+      shopGridEl.querySelectorAll('[data-equip]').forEach(b => b.addEventListener('click', () => equipSkin(b.dataset.equip)));
+      shopGridEl.querySelectorAll('[data-buy]').forEach(b => b.addEventListener('click', () => buySkin(b.dataset.buy)));
+    }
+
+    function buySkin(id) {
+      const s = SKINS[id];
+      if (!s || ownedSkins.has(id)) return;
+      if (player.score < s.cost) { setShopMsg('Not enough coins — collect more!'); return; }
+      pendingBuy = id;
+      setShopMsg('Buying ' + s.name + '…');
+      socket.emit('buy'); // server checks the balance and deducts authoritatively
+    }
+
+    // The server replies with the authoritative new balance and whether the
+    // spend went through. Only then do we unlock and equip the skin.
+    socket.on('buy_result', (data) => {
+      if (!data) return;
+      if (typeof data.score === 'number') player.score = data.score;
+      if (data.ok && pendingBuy) {
+        const bought = SKINS[pendingBuy];
+        ownedSkins.add(pendingBuy);
+        equipSkin(pendingBuy); // persists, re-renders, and broadcasts the new look
+        setShopMsg((bought ? bought.name : 'Skin') + ' unlocked & equipped!');
+      } else if (!data.ok) {
+        setShopMsg('Not enough coins.');
+        renderShop();
+      }
+      pendingBuy = null;
+    });
+
+    function openShop() {
+      if (shopOpen || !hasJoined) return;
+      shopOpen = true;
+      inputLeft = inputRight = jumpHeld = shiftHeld = false; // stop held movement
+      isDashing = false;
+      if (chatOpen) closeChat();
+      setShopMsg('');
+      renderShop();
+      shopOverlay.style.display = 'flex';
+    }
+    function closeShop() {
+      shopOpen = false;
+      shopOverlay.style.display = 'none';
+      canvas.focus();
+    }
+    function toggleShop() { shopOpen ? closeShop() : openShop(); }
 
     // Start a dash if one is available. Direction follows current input, or the
     // way you're facing if no direction is held. Refreshes on landing, so you
@@ -1075,7 +1358,7 @@
     let hasJoined = false;
     function sendJoin() {
       if (!hasJoined) return;
-      socket.emit('join', { username: player.username, color: player.color });
+      socket.emit('join', { username: player.username, color: player.color, skin: player.skin });
     }
     // Re-join automatically after a reconnect (fires on first connect too,
     // when it's a harmless no-op since hasJoined is still false then).
@@ -1181,10 +1464,10 @@
       if (Math.abs(player.Xv) > 12) {
         player.facing = player.Xv > 0 ? 1 : -1;
         player.action = "run";
-        setAnim(runImg, 8, player.facing === 1 ? 3 : 2);
+        setPose(8, player.facing === 1 ? 3 : 2);
       } else {
         player.action = "idle";
-        setAnim(idleImg, 6, 0);
+        setPose(6, 0);
       }
 
       // =====================================================================
@@ -1456,7 +1739,7 @@
 
     function drawOtherPlayer(p) {
       const fw = 64, fh = 64;
-      const sprite = p.displayEmote === "run" ? runImg : idleImg;
+      const sprite = skinSheet(p.skin, p.displayEmote);
       const rx = p.renderX ?? p.x;
       const ry = p.renderY ?? p.y;
 
@@ -1496,8 +1779,8 @@
       }
 
       playObj.drawImage(
-        img,
-        animations.currentFrame * animations.frameWidth, 
+        skinSheet(player.skin, player.action),
+        animations.currentFrame * animations.frameWidth,
         animations.frameRow * animations.frameHeight,
         animations.frameWidth, animations.frameHeight,
         player.x- 20, player.y - 20,
@@ -1577,7 +1860,7 @@
       const now = performance.now();
       if (now - lastMoveEmit >= MOVE_EMIT_INTERVAL_MS) {
         lastMoveEmit = now;
-        socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, color:player.color, emote: player.action, score :player.score });
+        socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, color:player.color, emote: player.action, score :player.score, skin: player.skin });
       }
     }
 
@@ -1590,6 +1873,11 @@
 
     canvas.addEventListener('keydown', e => {
       const key = normKey(e.key);
+
+      // P toggles the slime shop. While it's open, gameplay keys are swallowed
+      // (Escape also closes it) so you can't run around behind the menu.
+      if (key === 'p' && hasJoined && !chatOpen) { e.preventDefault(); toggleShop(); return; }
+      if (shopOpen) { if (key === 'Escape') closeShop(); e.preventDefault(); return; }
 
       // T opens the chat composer. preventDefault so the "t" keystroke that
       // opened it doesn't also get typed into the freshly-focused input.
@@ -1621,7 +1909,7 @@
         shiftHeld = true;
       }
 
-      socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, color:player.color, emote: player.action });
+      socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, color:player.color, emote: player.action, skin: player.skin });
       draw();
     });
 
@@ -1638,7 +1926,7 @@
       }
       if (key === 'Shift') shiftHeld = false;
 
-      socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, color:player.color, emote: player.action });
+      socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, color:player.color, emote: player.action, skin: player.skin });
       draw();
     });
 

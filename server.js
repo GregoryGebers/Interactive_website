@@ -371,6 +371,12 @@ function sanitizeMoveData(data, existingPlayer = null) {
     ? data.color
     : DEFAULT_USERNAME_COLOR;
 
+  // Skin, like score, is not something a movement packet should be able to
+  // wipe: keep the last known skin if this packet doesn't carry one.
+  const skin = typeof data.skin === 'string'
+    ? data.skin.slice(0, 40)
+    : (existingPlayer && existingPlayer.skin) || 'classic';
+
   // Score is owned by the server and is only changed in the coin_taken
   // handler. Some viewer.html move packets do not include score at all
   // (for example keydown/keyup emits), and previously those packets were
@@ -388,6 +394,7 @@ function sanitizeMoveData(data, existingPlayer = null) {
     color,
     emote: typeof data.emote === 'string' ? data.emote : 'idle',
     score: Number.isFinite(existingScore) ? existingScore : 0,
+    skin,
   };
 }
 
@@ -462,7 +469,11 @@ io.on('connection', (socket) => {
         ? data.color
         : DEFAULT_USERNAME_COLOR;
 
-      players[socket.id] = { x: 100, y: 100, emote: 'idle', score: 0, username, color };
+      // Cosmetic skin id (which slime sprite this player wears). Just a short
+      // string the clients map to sprite sheets; capped so it can't be abused.
+      const skin = data && typeof data.skin === 'string' ? data.skin.slice(0, 40) : 'classic';
+
+      players[socket.id] = { x: 100, y: 100, emote: 'idle', score: 0, username, color, skin };
       lastActivityAt[socket.id] = Date.now(); // joining counts as activity
       socket.broadcast.emit('new-player', { id: socket.id, ...players[socket.id] });
     } catch (err) {
@@ -494,6 +505,35 @@ io.on('connection', (socket) => {
       }, 3000);
     } catch (err) {
       console.error(`[coin_taken] error from ${socket.id}:`, err);
+    }
+  });
+
+  // ---- Cosmetic purchase --------------------------------------------------
+  // The shop (press P in viewer.html) sells slime skins for coins. Score is
+  // the currency and is server-owned, so the DEDUCTION happens here — a client
+  // can't grant itself coins or spend coins it doesn't have. We don't track
+  // which skin was bought (the client owns that list); every purchase is a
+  // flat 10-coin charge, and only succeeds if the player can afford it.
+  const COSMETIC_COST = 10;
+  socket.on('buy', () => {
+    try {
+      const buyer = players[socket.id];
+      if (!buyer) return; // spectators can't buy
+
+      const score = Number(buyer.score) || 0;
+      if (score < COSMETIC_COST) {
+        socket.emit('buy_result', { ok: false, score });
+        return;
+      }
+      buyer.score = score - COSMETIC_COST;
+      lastActivityAt[socket.id] = Date.now(); // buying counts as activity
+
+      // Tell the buyer (authoritative new balance) and everyone else (so the
+      // overlay leaderboard and other clients see the reduced score).
+      socket.emit('buy_result', { ok: true, score: buyer.score });
+      socket.broadcast.emit('player-move', { id: socket.id, ...buyer });
+    } catch (err) {
+      console.error(`[buy] error from ${socket.id}:`, err);
     }
   });
 
