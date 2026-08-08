@@ -476,6 +476,7 @@ const WORLD_OFFSET_Y = 100;
         high_score = p.score;
         high_user = p.username;
       }
+      if (p.invisible) continue; // invisible players are hidden on the overlay too
       const fw = 64, fh = 64;
       const anim = updatePlayerAnimation(p, deltaTime);
       const img = skinSheet(p.skin, anim.emote);
@@ -495,6 +496,7 @@ const WORLD_OFFSET_Y = 100;
     const swingNowMs = performance.now();
     for (const id in players) {
       const p = players[id];
+      if (p.invisible) continue;
       if (p.swingStartAt && swingNowMs - p.swingStartAt < SWING_DURATION_MS) {
         drawBatSwing(
           ctx,
@@ -514,6 +516,7 @@ const WORLD_OFFSET_Y = 100;
 
     for (const id in players) {
       const p = players[id];
+      if (p.invisible) continue;
       ctx.font = '16px Arial';
       ctx.fillStyle = p.color || 'blue';
       ctx.textAlign = 'center';
@@ -526,6 +529,7 @@ const WORLD_OFFSET_Y = 100;
     const nowMs = performance.now();
     for (const id in players) {
       const p = players[id];
+      if (p.invisible) continue;
       if (p.chatMessage && nowMs < p.chatExpiresAt) {
         drawChatBubble(ctx, p.chatMessage, (p.renderX + 10) * WORLD_SCALE, WORLD_OFFSET_Y + (p.renderY - 22) * WORLD_SCALE);
       }

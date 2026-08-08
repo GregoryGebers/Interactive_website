@@ -333,6 +333,28 @@ function pickRandomCoin() {
   return coins[Math.floor(Math.random() * coins.length)];
 }
 
+// ---- Shop pricing (authoritative) ------------------------------------------
+// The server owns coin balances, so it must own prices too. The client only
+// says WHICH item/tier it wants; the price is looked up here. Grouped by item
+// so new shops/items slot in without touching the buy handler below.
+const SKIN_COST = 10; // every cosmetic skin costs the same
+const UPGRADE_COSTS = {
+  jump: [5, 10, 15],          // 3 tiers
+  dash: [5, 10, 15],          // 3 tiers
+  health: [5, 10, 15],        // 3 tiers
+  invisibility: [10, 20, 30], // 3 tiers (duration)
+  doubleJump: [20],           // single tier
+};
+// Returns the coin price for an item/tier, or null if it isn't a real purchase.
+function priceOf(item, tier) {
+  if (item === 'skin') return SKIN_COST;
+  const tiers = UPGRADE_COSTS[item];
+  if (!tiers) return null;
+  const t = Number(tier);
+  if (!Number.isInteger(t) || t < 1 || t > tiers.length) return null;
+  return tiers[t - 1];
+}
+
 // Single source of truth for the current coin, so a new player joining just
 // gets told where it currently is instead of the server re-rolling a fresh
 // coin (and moving it) for every already-playing client.
@@ -395,6 +417,9 @@ function sanitizeMoveData(data, existingPlayer = null) {
     emote: typeof data.emote === 'string' ? data.emote : 'idle',
     score: Number.isFinite(existingScore) ? existingScore : 0,
     skin,
+    // Invisibility is a transient per-frame state the client reports; when a
+    // player is invisible, everyone ELSE hides their sprite entirely.
+    invisible: data.invisible === true,
   };
 }
 
@@ -508,29 +533,40 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ---- Cosmetic purchase --------------------------------------------------
-  // The shop (press P in viewer.html) sells slime skins for coins. Score is
-  // the currency and is server-owned, so the DEDUCTION happens here — a client
-  // can't grant itself coins or spend coins it doesn't have. We don't track
-  // which skin was bought (the client owns that list); every purchase is a
-  // flat 10-coin charge, and only succeeds if the player can afford it.
-  const COSMETIC_COST = 10;
-  socket.on('buy', () => {
+  // ---- Shop purchase ------------------------------------------------------
+  // The shop (press P in viewer.html) sells cosmetic skins AND gameplay
+  // upgrades. Score is the currency and is server-owned, so the DEDUCTION and
+  // the PRICE both live here — a client can only say WHICH item it wants, never
+  // how much it costs or that it can afford it. The client sends
+  // { item, tier }; we look the price up in PRICING (see priceOf above),
+  // charge it if affordable, and reply with the authoritative new balance.
+  // What the upgrade actually DOES is applied client-side (except invisibility,
+  // which is broadcast via the move packet's `invisible` flag).
+  socket.on('buy', (data) => {
     try {
       const buyer = players[socket.id];
       if (!buyer) return; // spectators can't buy
 
+      const item = data && typeof data.item === 'string' ? data.item : null;
+      const tier = data && data.tier;
+      const price = priceOf(item, tier);
       const score = Number(buyer.score) || 0;
-      if (score < COSMETIC_COST) {
-        socket.emit('buy_result', { ok: false, score });
+
+      if (price === null) {
+        socket.emit('buy_result', { ok: false, score, item, tier, reason: 'invalid' });
         return;
       }
-      buyer.score = score - COSMETIC_COST;
+      if (score < price) {
+        socket.emit('buy_result', { ok: false, score, item, tier, reason: 'poor' });
+        return;
+      }
+
+      buyer.score = score - price;
       lastActivityAt[socket.id] = Date.now(); // buying counts as activity
 
-      // Tell the buyer (authoritative new balance) and everyone else (so the
-      // overlay leaderboard and other clients see the reduced score).
-      socket.emit('buy_result', { ok: true, score: buyer.score });
+      // Echo item/tier so the client knows exactly what it just paid for, and
+      // broadcast the reduced score to everyone else (overlay + other clients).
+      socket.emit('buy_result', { ok: true, score: buyer.score, item, tier });
       socket.broadcast.emit('player-move', { id: socket.id, ...buyer });
     } catch (err) {
       console.error(`[buy] error from ${socket.id}:`, err);

@@ -372,11 +372,37 @@
     .shop-sub { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
     #shopMsg { color: var(--gold); font-size: 12px; min-height: 14px; margin: 0 0 10px; font-weight: 600; }
     .shop-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+      padding: 4px;
+    }
+    .shop-section {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 11px;
+      color: var(--gold);
+      letter-spacing: 0.5px;
+      padding: 6px 2px 2px;
+      border-bottom: 2px solid var(--panel-lighter);
+    }
+    .shop-grid-inner {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
       gap: 12px;
-      overflow-y: auto;
-      padding: 4px;
+    }
+    .shop-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 34px;
+      color: var(--slime);
+      background: var(--panel);
+    }
+    .shop-lvl {
+      font-size: 10px;
+      color: var(--muted);
+      text-align: center;
     }
     .shop-card {
       background: var(--panel-light);
@@ -473,6 +499,7 @@
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to move ·
         <kbd>W</kbd>/<kbd>↑</kbd> to jump (hold for higher) ·
         <kbd>SHIFT</kbd> to dash ·
+        <kbd>CTRL</kbd> to vanish ·
         <kbd>SPACE</kbd> to attack ·
         <kbd>T</kbd> to talk ·
         <kbd>P</kbd> for the slime shop
@@ -800,21 +827,63 @@
     const ACCEL_AIR = 1100;        // ... and in the air (lighter control)
     const FRICTION_GROUND = 1500;  // decel when no input, grounded
     const AIR_DRAG = 180;          // decel when no input, airborne (keeps momentum)
-    const JUMP_VELOCITY = 340;     // initial upward burst on jump (full jump ~85 units high, matching the old max so every existing gap stays clearable)
+    // Jump strength scales with the "Higher Jump" upgrade: base is 75% of the
+    // old value; each purchased tier adds 10% of it. See jumpVelocity().
+    const JUMP_REF = 340;               // previous full-jump strength (reference)
+    const JUMP_BASE = JUMP_REF * 0.75;  // 255 — smaller default jump
+    const JUMP_STEP = JUMP_REF * 0.10;  // +34 per tier -> tier 3 = 357
     const GRAVITY_UP = 560;        // gravity while rising (Yv < 0): floaty
     const GRAVITY_DOWN = 1050;     // gravity while falling: snappier
     const MAX_FALL = 900;          // terminal fall speed
     const JUMP_CUT = 0.45;         // release-while-rising multiplies Yv by this
     const COYOTE_TIME = 0.10;      // grace window to still jump after a ledge
     const JUMP_BUFFER = 0.12;      // remember a jump press this long before landing
-    const DASH_SPEED = 430;        // dash burst speed
+    // Dash strength scales with the "Stronger Dash" upgrade, same rule.
+    const DASH_REF = 430;               // previous dash speed (reference)
+    const DASH_BASE = DASH_REF * 0.75;  // 322.5 — weaker default dash
+    const DASH_STEP = DASH_REF * 0.10;  // +43 per tier -> tier 3 = 451.5
     const DASH_DURATION = 0.14;    // how long the burst lasts
     const DASH_COOLDOWN = 0.45;    // min time between dashes
 
     // Held-key input + timers driving the physics above.
-    let inputLeft = false, inputRight = false, jumpHeld = false, shiftHeld = false;
+    let inputLeft = false, inputRight = false, jumpHeld = false, shiftHeld = false, ctrlHeld = false;
     let coyoteTimer = 0, jumpBufferTimer = 0;
     let isDashing = false, dashDir = 1, dashTimer = 0, dashCooldownTimer = 0, canDash = true;
+    let airJumps = 0;   // remaining mid-air jumps (from the double-jump upgrade)
+
+    // ---- Purchasable gameplay upgrades (reset every session; not persisted) --
+    // Tier 0..3 for the tiered ones; doubleJump is a one-off unlock. Coins are
+    // spent server-side (see the buy flow); the effects are applied here.
+    const upgrades = { jump: 0, dash: 0, health: 0, invisibility: 0, doubleJump: false };
+    function jumpVelocity() { return JUMP_BASE + upgrades.jump * JUMP_STEP; }
+    function dashSpeed() { return DASH_BASE + upgrades.dash * DASH_STEP; }
+
+    // Hidden health stat (base 3, +1 per tier up to 6). Not shown anywhere yet;
+    // wired for a future damage/combat pass.
+    player.maxHealth = 3;
+    player.health = 3;
+
+    // ---- Invisibility (press Control) ----
+    // Duration grows with the tier (2s / 3.5s / 5s). You can't move while
+    // invisible — any movement breaks it early. Half-transparent to yourself,
+    // fully hidden to others (via the network `invisible` flag + draw code).
+    const INVIS_DURS = [2, 3.5, 5];  // seconds per tier
+    const INVIS_COOLDOWN = 3;        // seconds before you can vanish again
+    let invisTimer = 0, invisCooldown = 0;
+    player.invisible = false;
+
+    function tryInvisible() {
+      if (!upgrades.invisibility || player.invisible || invisCooldown > 0) return;
+      player.invisible = true;
+      invisTimer = INVIS_DURS[upgrades.invisibility - 1] || 2;
+      emitMoveNow(); // tell everyone else to hide us right away
+    }
+    function endInvisible() {
+      if (!player.invisible) return;
+      player.invisible = false;
+      invisCooldown = INVIS_COOLDOWN;
+      emitMoveNow();
+    }
 
     // Reset the frame cycle only when the pose (frame count or facing row)
     // actually changes. The sprite SHEET is chosen at draw time from the
@@ -902,7 +971,7 @@
       socket.emit('move', {
         x: player.x, y: player.y,
         frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow: animations.frameRow,
-        username: player.username, color: player.color, emote: player.action, score: player.score, skin: player.skin,
+        username: player.username, color: player.color, emote: player.action, score: player.score, skin: player.skin, invisible: player.invisible,
       });
     }
 
@@ -916,6 +985,9 @@
     }
 
     // ---- Shop UI (opens on P) ----------------------------------------------
+    // The shop is driven by a CATALOG of sections so new item groups (and, later,
+    // whole separate shops) slot in without touching the render/buy plumbing.
+    // Each section has a `kind`: 'cosmetic' (skins) or 'upgrade' (tiered/single).
     let shopOpen = false;
     const shopOverlay = document.getElementById('shopOverlay');
     const shopGridEl = document.getElementById('shopGrid');
@@ -923,55 +995,132 @@
     const shopMsgEl = document.getElementById('shopMsg');
     document.getElementById('shopClose').addEventListener('click', closeShop);
 
+    // Upgrade definitions used for both rendering and buy validation. Costs
+    // here mirror the server's authoritative PRICING (server.js priceOf()).
+    const UPGRADE_DEFS = [
+      { cat: 'jump',         title: 'Higher Jump',   icon: '⤒', costs: [5, 10, 15], blurb: 'Jump higher' },
+      { cat: 'dash',         title: 'Stronger Dash', icon: '»', costs: [5, 10, 15], blurb: 'Dash farther' },
+      { cat: 'health',       title: 'More Health',   icon: '♥', costs: [5, 10, 15], blurb: 'Tougher slime' },
+      { cat: 'doubleJump',   title: 'Double Jump',   icon: '⇈', single: true, cost: 20, blurb: 'Jump again mid-air' },
+      { cat: 'invisibility', title: 'Invisibility',  icon: '◌', costs: [10, 20, 30], blurb: 'Vanish · Ctrl' },
+    ];
+    const UPGRADE_TITLE = Object.fromEntries(UPGRADE_DEFS.map(d => [d.cat, d.title]));
+
+    // The whole catalog, in display order. Splitting into multiple shops later
+    // is just a matter of filtering this array by section id.
+    const SHOP_CATALOG = [
+      { id: 'skins', title: 'SLIME SKINS', kind: 'cosmetic' },
+      { id: 'upgrades', title: 'UPGRADES', kind: 'upgrade' },
+    ];
+
     function setShopMsg(t) { shopMsgEl.textContent = t || ''; }
+
+    function skinCardHTML(id, s) {
+      const owned = ownedSkins.has(id);
+      const equipped = equippedSkin === id;
+      let btn;
+      if (equipped) btn = `<button class="shop-btn equipped" disabled>EQUIPPED</button>`;
+      else if (owned) btn = `<button class="shop-btn equip" data-equip="${id}">EQUIP</button>`;
+      else {
+        const afford = player.score >= s.cost;
+        btn = `<button class="shop-btn buy ${afford ? '' : 'disabled'}" data-buy="${id}" ${afford ? '' : 'disabled'}>${s.cost} COINS</button>`;
+      }
+      return `<div class="shop-card ${equipped ? 'is-equipped' : ''}">
+        <div class="shop-preview" style="background-image:url('${s.idle}')"></div>
+        <div class="shop-name">${s.name}</div>
+        <div class="shop-lvl">${equipped ? 'Equipped' : owned ? 'Owned' : 'Cosmetic'}</div>
+        ${btn}</div>`;
+    }
+
+    function upgradeCardHTML(def) {
+      const icon = `<div class="shop-preview shop-icon">${def.icon}</div>`;
+      if (def.single) {
+        const owned = upgrades.doubleJump;
+        const afford = player.score >= def.cost;
+        const btn = owned
+          ? `<button class="shop-btn equipped" disabled>OWNED</button>`
+          : `<button class="shop-btn buy ${afford ? '' : 'disabled'}" data-buyup="${def.cat}" data-tier="1" ${afford ? '' : 'disabled'}>${def.cost} COINS</button>`;
+        return `<div class="shop-card ${owned ? 'is-equipped' : ''}">${icon}
+          <div class="shop-name">${def.title}</div><div class="shop-lvl">${owned ? 'Owned' : def.blurb}</div>${btn}</div>`;
+      }
+      const cur = upgrades[def.cat] || 0;
+      const max = def.costs.length;
+      let btn;
+      if (cur >= max) btn = `<button class="shop-btn equipped" disabled>MAXED</button>`;
+      else {
+        const cost = def.costs[cur];
+        const afford = player.score >= cost;
+        btn = `<button class="shop-btn buy ${afford ? '' : 'disabled'}" data-buyup="${def.cat}" data-tier="${cur + 1}" ${afford ? '' : 'disabled'}>TIER ${cur + 1} · ${cost} COINS</button>`;
+      }
+      return `<div class="shop-card ${cur >= max ? 'is-equipped' : ''}">${icon}
+        <div class="shop-name">${def.title}</div><div class="shop-lvl">Lvl ${cur}/${max} · ${def.blurb}</div>${btn}</div>`;
+    }
 
     function renderShop() {
       if (!shopGridEl) return;
       shopCoinsEl.textContent = player.score;
-      shopGridEl.innerHTML = Object.entries(SKINS).map(([id, s]) => {
-        const owned = ownedSkins.has(id);
-        const equipped = equippedSkin === id;
-        let btn;
-        if (equipped) btn = `<button class="shop-btn equipped" disabled>EQUIPPED</button>`;
-        else if (owned) btn = `<button class="shop-btn equip" data-equip="${id}">EQUIP</button>`;
-        else {
-          const afford = player.score >= s.cost;
-          btn = `<button class="shop-btn buy ${afford ? '' : 'disabled'}" data-buy="${id}" ${afford ? '' : 'disabled'}>${s.cost} COINS</button>`;
-        }
-        return `<div class="shop-card ${equipped ? 'is-equipped' : ''}">
-          <div class="shop-preview" style="background-image:url('${s.idle}')"></div>
-          <div class="shop-name">${s.name}</div>
-          ${btn}
-        </div>`;
+      shopGridEl.innerHTML = SHOP_CATALOG.map(section => {
+        let cards;
+        if (section.kind === 'cosmetic') cards = Object.entries(SKINS).map(([id, s]) => skinCardHTML(id, s)).join('');
+        else cards = UPGRADE_DEFS.map(upgradeCardHTML).join('');
+        return `<div class="shop-section">${section.title}</div><div class="shop-grid-inner">${cards}</div>`;
       }).join('');
       shopGridEl.querySelectorAll('[data-equip]').forEach(b => b.addEventListener('click', () => equipSkin(b.dataset.equip)));
       shopGridEl.querySelectorAll('[data-buy]').forEach(b => b.addEventListener('click', () => buySkin(b.dataset.buy)));
+      shopGridEl.querySelectorAll('[data-buyup]').forEach(b => b.addEventListener('click', () => buyUpgrade(b.dataset.buyup, Number(b.dataset.tier))));
     }
 
     function buySkin(id) {
       const s = SKINS[id];
       if (!s || ownedSkins.has(id)) return;
       if (player.score < s.cost) { setShopMsg('Not enough coins — collect more!'); return; }
-      pendingBuy = id;
+      pendingBuy = { type: 'skin', id };
       setShopMsg('Buying ' + s.name + '…');
-      socket.emit('buy'); // server checks the balance and deducts authoritatively
+      socket.emit('buy', { item: 'skin' }); // server prices + deducts authoritatively
     }
 
-    // The server replies with the authoritative new balance and whether the
-    // spend went through. Only then do we unlock and equip the skin.
+    function buyUpgrade(cat, tier) {
+      const def = UPGRADE_DEFS.find(d => d.cat === cat);
+      if (!def) return;
+      if (def.single) {
+        if (upgrades.doubleJump) return;
+        if (player.score < def.cost) { setShopMsg('Not enough coins — collect more!'); return; }
+      } else {
+        const cur = upgrades[cat] || 0;
+        if (tier !== cur + 1 || cur >= def.costs.length) return; // must buy the next tier up
+        if (player.score < def.costs[cur]) { setShopMsg('Not enough coins — collect more!'); return; }
+      }
+      pendingBuy = { type: 'upgrade', cat, tier };
+      setShopMsg('Buying ' + def.title + '…');
+      socket.emit('buy', { item: cat, tier });
+    }
+
+    function applyUpgrade(cat, tier) {
+      if (cat === 'doubleJump') upgrades.doubleJump = true;
+      else upgrades[cat] = tier;
+      if (cat === 'health') { player.maxHealth = 3 + upgrades.health; player.health = player.maxHealth; }
+    }
+
+    // Server replies with the authoritative new balance + whether it went
+    // through. Only then do we unlock/equip the skin or apply the upgrade.
     socket.on('buy_result', (data) => {
       if (!data) return;
       if (typeof data.score === 'number') player.score = data.score;
       if (data.ok && pendingBuy) {
-        const bought = SKINS[pendingBuy];
-        ownedSkins.add(pendingBuy);
-        equipSkin(pendingBuy); // persists, re-renders, and broadcasts the new look
-        setShopMsg((bought ? bought.name : 'Skin') + ' unlocked & equipped!');
+        if (pendingBuy.type === 'skin') {
+          const bought = SKINS[pendingBuy.id];
+          ownedSkins.add(pendingBuy.id);
+          equipSkin(pendingBuy.id); // persists, re-renders, broadcasts the new look
+          setShopMsg((bought ? bought.name : 'Skin') + ' unlocked & equipped!');
+        } else {
+          applyUpgrade(pendingBuy.cat, pendingBuy.tier);
+          setShopMsg((UPGRADE_TITLE[pendingBuy.cat] || 'Upgrade') + ' purchased!');
+        }
       } else if (!data.ok) {
-        setShopMsg('Not enough coins.');
-        renderShop();
+        setShopMsg(data.reason === 'poor' ? 'Not enough coins.' : 'Cannot buy that right now.');
       }
       pendingBuy = null;
+      renderShop();
     });
 
     function openShop() {
@@ -1004,7 +1153,7 @@
       dashCooldownTimer = DASH_COOLDOWN;
       canDash = false;
       player.Yv = 0;
-      player.Xv = dashDir * DASH_SPEED;
+      player.Xv = dashDir * dashSpeed();
     }
 
     // ---- Other connected players, keyed by socket id ----
@@ -1406,7 +1555,7 @@
     let coin = null;
     socket.on("coin", data => {
       coin = data;
-      console.log("Coin received:", data.x, data.y);
+      if (data) console.log("Coin received:", data.x, data.y);
     });
     socket.on("coin_taken", () => {
       coin = null;
@@ -1426,9 +1575,9 @@
       const moveDir = (inputRight ? 1 : 0) - (inputLeft ? 1 : 0);
       const grounded = player.onGround;
 
-      // Coyote time + dash refresh while we still hold the grounded flag; tick
-      // the buffer/cooldown timers down.
-      if (grounded) { coyoteTimer = COYOTE_TIME; canDash = true; }
+      // Coyote time, dash refresh, and mid-air jumps all reset while we still
+      // hold the grounded flag; tick the buffer/cooldown timers down.
+      if (grounded) { coyoteTimer = COYOTE_TIME; canDash = true; airJumps = upgrades.doubleJump ? 1 : 0; }
       else { coyoteTimer = Math.max(0, coyoteTimer - deltaTime); }
       if (jumpBufferTimer > 0) jumpBufferTimer -= deltaTime;
       if (dashCooldownTimer > 0) dashCooldownTimer -= deltaTime;
@@ -1437,7 +1586,7 @@
         // A dash is a short, fixed-speed horizontal burst; it holds top speed
         // then eases back to normal running speed when it ends.
         dashTimer -= deltaTime;
-        player.Xv = dashDir * DASH_SPEED;
+        player.Xv = dashDir * dashSpeed();
         if (dashTimer <= 0) { isDashing = false; player.Xv = dashDir * MOVE_SPEED; }
       } else if (moveDir !== 0) {
         // Accelerate toward the target speed (works on the ground AND in air).
@@ -1452,12 +1601,19 @@
         else if (player.Xv < 0) player.Xv = Math.min(0, player.Xv + decel);
       }
 
-      // ---- Jump: immediate press-to-jump, gated by coyote time + buffer ----
-      if (!isDashing && jumpBufferTimer > 0 && coyoteTimer > 0) {
-        player.Yv = -JUMP_VELOCITY;
-        player.onGround = false;
-        coyoteTimer = 0;
-        jumpBufferTimer = 0;
+      // ---- Jump: immediate press-to-jump, gated by coyote time + buffer.
+      // With the double-jump upgrade, a second press in mid-air jumps again. ----
+      if (!isDashing && jumpBufferTimer > 0) {
+        if (coyoteTimer > 0) {
+          player.Yv = -jumpVelocity();
+          player.onGround = false;
+          coyoteTimer = 0;
+          jumpBufferTimer = 0;
+        } else if (airJumps > 0) {
+          player.Yv = -jumpVelocity();
+          airJumps--;
+          jumpBufferTimer = 0;
+        }
       }
 
       // ---- Sprite pose from actual horizontal motion ----
@@ -1468,6 +1624,15 @@
       } else {
         player.action = "idle";
         setPose(6, 0);
+      }
+
+      // ---- Invisibility: count down, and break the instant you move ----
+      if (invisCooldown > 0) invisCooldown = Math.max(0, invisCooldown - deltaTime);
+      if (player.invisible) {
+        invisTimer -= deltaTime;
+        const movedOrTried = inputLeft || inputRight || jumpHeld || isDashing ||
+          Math.abs(player.Xv) > 3 || !player.onGround;
+        if (invisTimer <= 0 || movedOrTried) endInvisible();
       }
 
       // =====================================================================
@@ -1738,6 +1903,7 @@
     }
 
     function drawOtherPlayer(p) {
+      if (p.invisible) return; // an invisible player is fully hidden to others
       const fw = 64, fh = 64;
       const sprite = skinSheet(p.skin, p.displayEmote);
       const rx = p.renderX ?? p.x;
@@ -1778,6 +1944,9 @@
         drawOtherPlayer(otherPlayers[id]);
       }
 
+      // While invisible YOU see a half-transparent slime; everyone else sees
+      // nothing (their client skips drawing you — see drawOtherPlayer).
+      if (player.invisible) playObj.globalAlpha = 0.5;
       playObj.drawImage(
         skinSheet(player.skin, player.action),
         animations.currentFrame * animations.frameWidth,
@@ -1792,6 +1961,7 @@
       playObj.textAlign = 'center';
       playObj.textBaseline = 'bottom';
       playObj.fillText(player.username, player.x + player.width/2, player.y - 5);
+      playObj.globalAlpha = 1;
 
       // Bat swings: drawn over sprites (the bat passes in front of the
       // character) but under chat bubbles. Each swing renders for
@@ -1800,6 +1970,7 @@
       const swingNow = performance.now();
       for (const id in otherPlayers) {
         const p = otherPlayers[id];
+        if (p.invisible) continue;
         if (p.swingStartAt && swingNow - p.swingStartAt < SWING_DURATION_MS) {
           drawBatSwing(
             playObj,
@@ -1825,6 +1996,7 @@
       const nowMs = performance.now();
       for (const id in otherPlayers) {
         const p = otherPlayers[id];
+        if (p.invisible) continue;
         if (p.chatMessage && nowMs < p.chatExpiresAt) {
           drawChatBubble(playObj, p.chatMessage, (p.renderX ?? p.x) + 10, (p.renderY ?? p.y) - 22);
         }
@@ -1860,7 +2032,7 @@
       const now = performance.now();
       if (now - lastMoveEmit >= MOVE_EMIT_INTERVAL_MS) {
         lastMoveEmit = now;
-        socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, color:player.color, emote: player.action, score :player.score, skin: player.skin });
+        socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, color:player.color, emote: player.action, score :player.score, skin: player.skin, invisible: player.invisible });
       }
     }
 
@@ -1908,8 +2080,12 @@
         if (!shiftHeld) tryDash(); // dash on the press, not on key-repeat
         shiftHeld = true;
       }
+      if (key === 'Control') {
+        if (!ctrlHeld) tryInvisible(); // vanish on the press, not on key-repeat
+        ctrlHeld = true;
+      }
 
-      socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, color:player.color, emote: player.action, skin: player.skin });
+      socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, color:player.color, emote: player.action, skin: player.skin, invisible: player.invisible });
       draw();
     });
 
@@ -1925,8 +2101,9 @@
         if (player.Yv < 0) player.Yv *= JUMP_CUT;
       }
       if (key === 'Shift') shiftHeld = false;
+      if (key === 'Control') ctrlHeld = false;
 
-      socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, color:player.color, emote: player.action, skin: player.skin });
+      socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, color:player.color, emote: player.action, skin: player.skin, invisible: player.invisible });
       draw();
     });
 
