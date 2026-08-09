@@ -121,55 +121,156 @@
       font-weight: 400;
     }
 
-    /* ---- Account login panel (optional Supabase auth) ---------------------- */
-    #authPanel {
+    /* ---- Account login (optional Supabase auth) --------------------------- */
+    /* The three views share this column layout; only one is visible at a time. */
+    #authView, #signedInView, #guestView {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+    }
+
+    /* Sliding Sign In / Sign Up segmented toggle. */
+    .seg-toggle {
+      position: relative;
+      display: block;
+      padding: 4px;
+      background: rgba(0, 0, 0, 0.22);
+      border: 2px solid var(--ink);
+      box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.25);
+      user-select: none;
+    }
+    /* Buttons live in their own flex row so the slider's containing block is a
+       plain positioned block (some engines refuse to offset an absolutely
+       positioned child of a flex/grid container). */
+    .seg-toggle .seg-btn-row {
+      position: relative;
+      z-index: 1;
+      display: flex;
+    }
+    .seg-toggle .seg-slider {
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      width: calc(50% - 6px);
+      height: calc(100% - 8px);
+      background: var(--slime);
+      border: 2px solid var(--ink);
+      box-shadow: 2px 2px 0 var(--ink);
+      /* Animate with transform, not `left`: this engine freezes a transitioned
+         `left`, but transitions `transform` fine on a block-parented element. */
+      transition: transform 0.18s cubic-bezier(0.5, 1.6, 0.4, 1);
+      z-index: 0;
+    }
+    .seg-toggle[data-mode="signup"] .seg-slider {
+      transform: translateX(calc(100% + 4px));
+    }
+    .seg-toggle .seg-btn {
+      position: relative;
+      z-index: 1;
+      flex: 1 1 0;
+      background: transparent;
+      border: 0;
+      padding: 9px 6px;
+      cursor: pointer;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+      transition: color 0.16s ease;
+    }
+    .seg-toggle .seg-btn.is-active {
+      color: var(--ink);
+      text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.35);
+    }
+
+    .auth-fields {
       display: flex;
       flex-direction: column;
       gap: 10px;
-      padding: 14px 14px 12px;
-      border: 2px dashed var(--ink);
-      background: rgba(0, 0, 0, 0.12);
     }
-    #authPanel .auth-lead {
+    .auth-fields input[type="text"],
+    .auth-fields input[type="password"] {
       font-family: 'Inter', Arial, sans-serif;
-      font-size: 12px;
-      color: var(--muted);
-      text-align: center;
-      margin: 0;
-    }
-    #authPanel .auth-status {
-      font-family: 'Inter', Arial, sans-serif;
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--gold);
-      text-align: center;
-      margin: 0;
-    }
-    #authPanel .auth-form-row {
-      display: flex;
-      gap: 8px;
-    }
-    #authPanel .auth-form-row input {
-      flex: 1;
-      min-width: 0;
-      font-family: 'Inter', Arial, sans-serif;
-      font-size: 14px;
-      padding: 9px 10px;
+      font-size: 15px;
+      font-weight: 600;
+      padding: 11px 12px;
       color: var(--ink);
       background: var(--cream);
       border: 2px solid var(--ink);
       box-shadow: 3px 3px 0 var(--ink);
       outline: none;
     }
-    #authPanel .auth-form-row input:focus {
+    .auth-fields input:focus {
       border-color: var(--slime);
       box-shadow: 3px 3px 0 var(--slime-dark);
     }
-    #authPanel .auth-btn-row {
+    .auth-fields input::placeholder { color: #7a8a7d; font-weight: 400; }
+
+    .auth-color-row {
       display: flex;
-      gap: 8px;
-      justify-content: center;
-      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-family: 'Inter', Arial, sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .auth-color-row input[type="color"] {
+      width: 46px;
+      height: 34px;
+      padding: 0;
+      border: 2px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+      background: var(--cream);
+      cursor: pointer;
+    }
+
+    /* "or" divider between account login and guest play. */
+    .auth-divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-family: 'Inter', Arial, sans-serif;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .auth-divider::before,
+    .auth-divider::after {
+      content: '';
+      flex: 1;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    /* Secondary/ghost button variant for guest + sign-out. */
+    .pixel-btn.pixel-btn-ghost {
+      background: transparent;
+      color: var(--cream);
+      box-shadow: 3px 3px 0 var(--ink);
+    }
+    .pixel-btn.pixel-btn-ghost:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    #signedInView .auth-status {
+      font-family: 'Inter', Arial, sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--cream);
+      text-align: center;
+      margin: 0;
+    }
+    .name-swatch {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 1px solid var(--ink);
+      vertical-align: middle;
+      margin-left: 2px;
     }
 
     /* Pixel/arcade button: hard offset shadow that collapses on press,

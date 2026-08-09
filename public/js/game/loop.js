@@ -99,22 +99,30 @@
     socket.on('connect', sendJoin);
 
     let lastTime = performance.now();
+
+    // Enter the world with a chosen identity, hide the login overlay and hand
+    // focus back to the canvas. Exposed on window so the account/guest login UI
+    // (auth.js) can start play from any of its buttons — guest GO, or the
+    // signed-in PLAY button that reuses the account's saved name and color.
+    function beginPlay(name, color) {
+      player.username = (name && String(name).trim()) || 'Player1';
+      player.color = color || '#1e3fff';
+      hasJoined = true;
+      sendJoin();
+      document.getElementById('loginMessage').style.display = 'none';
+      document.getElementById('loginOverlay').style.display = 'none';
+      canvas.focus(); // Return focus to canvas for key events
+    }
+    window.beginPlay = beginPlay;
+
     usernameprompt();
     function usernameprompt(){
-      const overlay = document.getElementById('loginOverlay');
       const input = document.getElementById('usernameInput');
       const button = document.getElementById('usernameBtn');
       const colorInput = document.getElementById('usernameColor');
 
       button.addEventListener('click', () => {
-        const name = input.value.trim() || 'Player1';
-        player.username = name;
-        player.color = colorInput.value || '#1e3fff';
-        hasJoined = true;
-        sendJoin();
-        document.getElementById('loginMessage').style.display = 'none';
-        overlay.style.display = 'none';
-        canvas.focus();  // Return focus to canvas for key events
+        beginPlay(input.value.trim() || 'Player1', colorInput.value || '#1e3fff');
       });
     }
 

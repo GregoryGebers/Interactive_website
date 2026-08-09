@@ -23,9 +23,17 @@ const PERSISTENCE_ENABLED = PLAYER_STATE_SECRET.length >= 32;
 // can run Supabase Auth (sign up / sign in) itself. If URL or service-role key
 // are missing, account persistence is disabled and the game falls back to the
 // existing signed-cookie / guest flow with no errors.
-const SUPABASE_URL = String(process.env.SUPABASE_URL || '');
-const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || '');
-const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+// Accept a project URL even if it was pasted with a trailing slash or the
+// `/rest/v1` API path appended — supabase-js wants only the bare origin
+// (https://xxxx.supabase.co) and otherwise builds broken auth URLs like
+// `/rest/v1/auth/v1/token`.
+const SUPABASE_URL = String(process.env.SUPABASE_URL || '')
+  .trim()
+  .replace(/\/+$/, '')
+  .replace(/\/rest\/v1$/i, '')
+  .replace(/\/+$/, '');
+const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || '').trim();
+const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 const SUPABASE_ENABLED = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 
 // Two people can run this game over their own stream: eberhex and izu_kora.

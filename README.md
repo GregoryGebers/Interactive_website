@@ -70,10 +70,16 @@ secrets.**
 
 ## Accounts & saved progress (Supabase)
 
-Players can optionally **sign in** (email + password) to save coins, cosmetics
-and upgrades to their account so progress follows them across devices. Not
-signing in still works — that's a **guest** session persisted in a signed
+Players can optionally **sign in** with a **username + password** (no email) to
+save coins, cosmetics and upgrades to their account so progress follows them
+across devices. The name color is chosen at sign-up and reused on every login.
+Not signing in still works — that's a **guest** session persisted in a signed
 HttpOnly cookie in the current browser (the original behavior).
+
+Supabase Auth is email-based under the hood, so each username is mapped to a
+stable synthetic email (`<username>@slime.game`) and the display name + color
+live in the account's user metadata. Because those emails are synthetic, **email
+confirmation must be turned OFF** (see step 4).
 
 The server stays **authoritative**: the browser never writes coins/upgrades to
 the database. It only authenticates with Supabase and passes its access token on
@@ -91,8 +97,9 @@ player *read* only their own row and blocks all direct client writes.
    **service_role** key into the three `SUPABASE_*` environment variables (see
    the table above; `.env.example` has a template). On Render, add them as
    environment variables.
-4. (Optional) In **Authentication → Providers → Email**, turn *"Confirm email"*
-   off for frictionless sign-up, or leave it on to require email confirmation.
+4. **Required:** In **Authentication → Providers → Email**, turn *"Confirm
+   email"* **OFF**. Usernames map to synthetic emails that can't receive a
+   confirmation link, so with confirmation on, new accounts can never sign in.
 
 If the `SUPABASE_*` vars are absent, the login panel hides itself and the game
 runs exactly as before on the guest/cookie path.

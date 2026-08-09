@@ -45,30 +45,56 @@
       <p class="login-title">JOIN THE GAME</p>
       <p id="loginMessage" class="hint" style="display:none; color: var(--gold); margin: 0;"></p>
 
-      <!-- Optional account login. Sign in to save coins, cosmetics and upgrades
-           to your account (across devices); or skip it and play as a guest,
-           where progress is kept in this browser only. Hidden automatically if
-           Supabase is not configured on the server. -->
-      <div id="authPanel">
-        <p class="auth-lead">Sign in to save your progress across devices — or just pick a username below to play as a guest.</p>
-        <p id="authStatus" class="auth-status" style="display:none;"></p>
-        <div id="authFormRow" class="auth-form-row">
-          <input id="authEmail" type="email" placeholder="Email" autocomplete="email" />
-          <input id="authPassword" type="password" placeholder="Password" autocomplete="current-password" />
+      <!-- ===== Account login (Supabase). Pick a username + password to save
+           coins, cosmetics and upgrades to your account across devices. The
+           whole block hides itself if Supabase isn't configured, leaving only
+           the guest view below. ===== -->
+      <div id="authView">
+        <!-- Sliding Sign In / Sign Up toggle -->
+        <div id="authToggle" class="seg-toggle" role="tablist">
+          <span class="seg-slider" aria-hidden="true"></span>
+          <div class="seg-btn-row">
+            <button type="button" class="seg-btn is-active" data-mode="signin" role="tab">Sign In</button>
+            <button type="button" class="seg-btn" data-mode="signup" role="tab">Sign Up</button>
+          </div>
         </div>
-        <div class="auth-btn-row">
-          <button id="authSignIn" class="pixel-btn pixel-btn-small">SIGN IN</button>
-          <button id="authSignUp" class="pixel-btn pixel-btn-small">SIGN UP</button>
-          <button id="authSignOut" class="pixel-btn pixel-btn-small" style="display:none;">SIGN OUT</button>
+
+        <div class="auth-fields">
+          <input id="authUsername" type="text" placeholder="Username" maxlength="20" autocomplete="username" />
+          <input id="authPassword" type="password" placeholder="Password (min 6 characters)" autocomplete="current-password" />
+          <!-- Name color is chosen when the account is created, and reused on
+               every sign-in. Only shown in Sign Up mode. -->
+          <div id="authColorRow" class="auth-color-row" style="display:none;">
+            <span>Slime name color</span>
+            <input id="authColor" type="color" value="#1e3fff" title="Name color" />
+          </div>
         </div>
+
+        <button id="authSubmit" class="pixel-btn">SIGN IN &amp; PLAY</button>
         <p id="authMsg" class="hint" style="margin:0;"></p>
+
+        <div class="auth-divider"><span>or</span></div>
+        <button id="guestBtn" class="pixel-btn pixel-btn-ghost pixel-btn-small">Play as guest</button>
       </div>
 
-      <div class="login-row">
-        <input id="usernameInput" type="text" placeholder="Username" maxlength="20" />
-        <input id="usernameColor" type="color" value="#1e3fff" title="Name color" />
+      <!-- ===== Signed-in: name + color come from the account. ===== -->
+      <div id="signedInView" style="display:none;">
+        <p id="signedInStatus" class="auth-status"></p>
+        <button id="playBtn" class="pixel-btn">PLAY</button>
+        <button id="signOutBtn" class="pixel-btn pixel-btn-ghost pixel-btn-small">Sign out</button>
       </div>
-      <button id="usernameBtn" class="pixel-btn">GO</button>
+
+      <!-- ===== Guest: browser-only progress. Also the fallback when Supabase
+           is off, in which case #backToAuth is hidden by auth.js. ===== -->
+      <div id="guestView" style="display:none;">
+        <div class="login-row">
+          <input id="usernameInput" type="text" placeholder="Username" maxlength="20" />
+          <input id="usernameColor" type="color" value="#1e3fff" title="Name color" />
+        </div>
+        <button id="usernameBtn" class="pixel-btn">GO</button>
+        <button id="backToAuth" class="pixel-btn pixel-btn-ghost pixel-btn-small">Back to sign in</button>
+      </div>
+
       <p class="hint">
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to move ·
         <kbd>W</kbd>/<kbd>↑</kbd> to jump (hold for higher) ·
