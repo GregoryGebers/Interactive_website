@@ -113,10 +113,14 @@
 <script src="/tools/editor/hitTesting.js"></script>
 <script src="/tools/editor/interactions.js"></script>
 <script src="/tools/editor/inspector.js"></script>
+<!-- persistence.js DEFINES saveScene / saveShopOnly / testDraft; it must load
+     before shopEditor.js and toolbar.js, whose top-level addEventListener calls
+     reference those functions (otherwise those scripts throw a ReferenceError
+     and their button handlers — Save Draft, Test Draft — never attach). -->
+<script src="/tools/editor/persistence.js"></script>
 <script src="/tools/editor/shopEditor.js"></script>
 <script src="/tools/editor/assets.js"></script>
 <script src="/tools/editor/toolbar.js"></script>
-<script src="/tools/editor/persistence.js"></script>
 <script src="/tools/editor/keyboard.js"></script>
 <script src="/tools/editor/boot.js"></script>
 </body>

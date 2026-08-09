@@ -14,12 +14,22 @@
     // those and persists them itself after verifying the access token.
 
     (function initAuth() {
-      if (IS_EDITOR_TEST) return; // editor test uses a fake socket
-
       const authView = document.getElementById('authView');
       const signedInView = document.getElementById('signedInView');
       const guestView = document.getElementById('guestView');
       if (!authView || !guestView) return;
+
+      // Editor Test runs on a fake in-page socket with no server and no
+      // accounts, so there is nothing to sign into. Show the guest view (its
+      // username + GO is how you enter the isolated test) and stop here.
+      if (IS_EDITOR_TEST) {
+        const back = document.getElementById('backToAuth');
+        if (back) back.style.display = 'none';
+        authView.style.display = 'none';
+        signedInView.style.display = 'none';
+        guestView.style.display = 'flex';
+        return;
+      }
 
       const toggle = document.getElementById('authToggle');
       const segBtns = toggle ? toggle.querySelectorAll('.seg-btn') : [];
