@@ -793,6 +793,25 @@ const MAX_CHAT_LENGTH = 100;
 const MIN_CHAT_INTERVAL_MS = 1000; // at most 1 message per second per player
 const lastChatAt = {};
 
+// ---- Shared player visual effects -------------------------------------------
+// viewer.html renders its own effect immediately, then emits a tiny `player-fx`
+// event so OTHER game viewers and overlay.html can reproduce the same visual.
+// These events are visual-only: the server ignores the client-supplied position
+// and anchors every effect to the authoritative player position it already has.
+//
+// Rate-limit each effect type independently so a legitimate dash followed
+// immediately by a jump/land is not accidentally dropped, while a modified
+// client still cannot spam one animation every frame.
+const PLAYER_FX_TYPES = new Set(['jump', 'double-jump', 'dash', 'land', 'invisibility']);
+const PLAYER_FX_MIN_INTERVAL_MS = {
+  jump: 60,
+  'double-jump': 80,
+  dash: 80,
+  land: 80,
+  invisibility: 80,
+};
+const lastPlayerFxAt = {}; // socket.id -> { [effectType]: timestamp }
+
 // ---- Bat swing ---------------------------------------------------------------
 // Space swings a bat. The HIT DETECTION runs here on the server (using the
 // positions it already tracks) rather than trusting the attacker's client,
@@ -903,8 +922,19 @@ io.on('connection', (socket) => {
       const currentScore = Number(taker.score);
       taker.score = (Number.isFinite(currentScore) ? currentScore : 0) + 1;
 
+      // Preserve the authoritative pickup position before clearing the coin.
+      // The collector already plays this effect locally; everyone else,
+      // including overlay.html, receives the same world-space pickup pop.
+      const pickedCoin = currentCoin;
       currentCoin = null;
       socket.broadcast.emit('coin_taken');
+      if (pickedCoin && Number.isFinite(Number(pickedCoin.x)) && Number.isFinite(Number(pickedCoin.y))) {
+        socket.broadcast.emit('coin-fx', {
+          id: socket.id,
+          x: Number(pickedCoin.x),
+          y: Number(pickedCoin.y),
+        });
+      }
 
       // Immediately broadcast the updated score so overlay.html does not wait
       // for the next movement packet before showing the new value.
@@ -1045,6 +1075,56 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ---- Shared visual effects -----------------------------------------------
+  // This relay was missing previously: viewer.html emitted `player-fx`, and
+  // viewer.html/overlay.html both listened for it, but server.js never handled
+  // the event, so the packet stopped here. Relay only validated visual data.
+  socket.on('player-fx', (data) => {
+    try {
+      const source = players[socket.id];
+      if (!source) return; // spectators / not-yet-joined sockets cannot emit FX
+      if (!data || typeof data !== 'object') return;
+
+      const type = typeof data.type === 'string' ? data.type : '';
+      if (!PLAYER_FX_TYPES.has(type)) return;
+
+      const now = Date.now();
+      const perSocket = lastPlayerFxAt[socket.id] || (lastPlayerFxAt[socket.id] = {});
+      const previous = Number(perSocket[type]) || 0;
+      const minInterval = PLAYER_FX_MIN_INTERVAL_MS[type] || 80;
+      if (previous && now - previous < minInterval) return;
+      perSocket[type] = now;
+
+      // IMPORTANT: x/y come from the server's latest authoritative player
+      // state, NOT from the browser payload. The event is purely cosmetic.
+      const payload = {
+        id: socket.id,
+        type,
+        x: Number(source.x) || 0,
+        y: Number(source.y) || 0,
+      };
+
+      if (type === 'dash') {
+        payload.dir = Number(data.dir) === -1 ? -1 : 1;
+      } else if (type === 'land') {
+        // Kept for future effect-strength tuning; current receivers only need
+        // the type/position. Clamp it so arbitrary values are never relayed.
+        const speed = Number(data.speed);
+        if (Number.isFinite(speed)) payload.speed = Math.max(0, Math.min(speed, 2000));
+      } else if (type === 'invisibility') {
+        payload.phase = data.phase === 'vanish' ? 'vanish'
+          : data.phase === 'appear' ? 'appear'
+          : 'toggle';
+      }
+
+      // Exclude the sender because it already rendered the effect immediately.
+      // `socket.broadcast` DOES include spectator sockets such as overlay.html.
+      socket.broadcast.emit('player-fx', payload);
+    } catch (err) {
+      console.error(`[player-fx] error from ${socket.id}:`, err);
+    }
+  });
+
   socket.on('swing', (data) => {
     try {
       const attacker = players[socket.id];
@@ -1094,9 +1174,9 @@ io.on('connection', (socket) => {
           const stunMaxMs = Math.max(stunBaseMs, finiteNumber(kbCfg.stunMaxMs, 1500, 0));
           const stunMs = Math.round(stunBaseMs + (stunMaxMs - stunBaseMs) * (knockTier / maxTier));
 
-          // Viewer-only game-feel event. overlay.html has no listener, so the
-          // stream view stays stable. This is emitted only after server-side
-          // hit detection succeeds, making attacker hit-confirm feedback real.
+          // Server-confirmed hit visual. Game viewers and overlay.html receive
+          // the flash/particles; camera shake is still created only inside each
+          // participating viewer, so the stream overlay itself never shakes.
           io.emit('player-hit', {
             attackerId: socket.id,
             targetId: id,
@@ -1159,6 +1239,7 @@ io.on('connection', (socket) => {
     delete lastMoveAt[socket.id];
     delete lastChatAt[socket.id];
     delete lastSwingAt[socket.id];
+    delete lastPlayerFxAt[socket.id];
 
     if (!players[socket.id]) return; // never joined as a player — nothing to clean up
 
