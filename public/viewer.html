@@ -1024,6 +1024,12 @@
       {x: 2920, y: 440, width: 20, height: 20},
       {x: 2980, y: 400, width: 20, height: 20},
     ];
+    // Horizontal collision-box alignment. The sprite stays exactly where it is;
+    // only the physical collision rectangle is shifted. A +2 offset moves the
+    // whole 20px-wide hitbox 2 world-pixels to the right, which balances the
+    // equal left/right visual gap without making the hitbox wider.
+    const PLAYER_HITBOX_OFFSET_X = 2;
+
     const player = {
       x: 100,
       y: 480,
@@ -2477,63 +2483,75 @@
 
       // ---- X axis: integrate, then resolve against box left/right faces ----
       const prevX = player.x;
-      player.x += player.Xv*deltaTime;
+      player.x += player.Xv * deltaTime;
+
+      // `player.x` is the sprite/physics anchor. The actual horizontal
+      // collision rectangle is shifted slightly right so its visible left and
+      // right contacts line up evenly with the slime art.
+      const hitboxLeftAt = (x) => x + PLAYER_HITBOX_OFFSET_X;
+      const hitboxRightAt = (x) => x + PLAYER_HITBOX_OFFSET_X + player.width;
 
       // Resolving against one box can push you into an adjacent one that
-      // the loop already passed — so repeat until nothing moves (2 passes
-      // covers every box chain in this level; 3 is a safety cap).
+      // the loop already passed, so repeat a few times until stable.
       for (let resolvePass = 0; resolvePass < 3; resolvePass++) {
         let movedX = false;
         for (const box of boxes) {
           // Standing exactly on top (y+height === box.y) is NOT vertical
-          // overlap, so walking across the seam of two adjacent boxes never
-          // snags on the next box's side face.
+          // overlap, so walking across adjacent platform seams does not snag.
           const verticalOverlap =
             player.y + player.height > box.y &&
             player.y < box.y + box.height;
           if (!verticalOverlap) continue;
 
+          const nowLeft = hitboxLeftAt(player.x);
+          const nowRight = hitboxRightAt(player.x);
           const nowIntersectsX =
-            player.x + player.width > box.x &&
-            player.x < box.x + box.width;
+            nowRight > box.x &&
+            nowLeft < box.x + box.width;
           if (!nowIntersectsX) continue;
 
-          const wasLeftOf = prevX + player.width <= box.x;
-          const wasRightOf = prevX >= box.x + box.width;
+          const prevLeft = hitboxLeftAt(prevX);
+          const prevRight = hitboxRightAt(prevX);
+          const wasLeftOf = prevRight <= box.x;
+          const wasRightOf = prevLeft >= box.x + box.width;
 
           if (wasLeftOf) {
-            // Crossed the left face this frame — clamp to it, bounce away
-            // (same knock-back feel the old side hits had).
-            player.x = box.x - player.width;
-            player.Xv = -80;
+            // Hit the box while moving right. Clamp the HITBOX right edge
+            // exactly to the box's left edge. No rebound: rebound velocity was
+            // creating a visible post-collision gap.
+            player.x = box.x - PLAYER_HITBOX_OFFSET_X - player.width;
+            player.Xv = 0;
           } else if (wasRightOf) {
-            player.x = box.x + box.width;
-            player.Xv = 80;
+            // Hit the box while moving left. Clamp the HITBOX left edge
+            // exactly to the box's right edge.
+            player.x = box.x + box.width - PLAYER_HITBOX_OFFSET_X;
+            player.Xv = 0;
           } else {
-            // Already overlapping before the move (bad prior state): push out
-            // through whichever face is closest instead of letting it fester.
-            const pushLeft = (player.x + player.width) - box.x;
-            const pushRight = (box.x + box.width) - player.x;
+            // Already overlapping from a prior correction: leave through the
+            // nearest horizontal face, using the shifted hitbox edges.
+            const left = hitboxLeftAt(player.x);
+            const right = hitboxRightAt(player.x);
+            const pushLeft = right - box.x;
+            const pushRight = (box.x + box.width) - left;
             if (pushLeft <= pushRight) {
-              player.x = box.x - player.width;
-              player.Xv = Math.min(player.Xv, -80);
+              player.x = box.x - PLAYER_HITBOX_OFFSET_X - player.width;
             } else {
-              player.x = box.x + box.width;
-              player.Xv = Math.max(player.Xv, 80);
+              player.x = box.x + box.width - PLAYER_HITBOX_OFFSET_X;
             }
+            player.Xv = 0;
           }
           movedX = true;
         }
         if (!movedX) break;
       }
 
-      // World bounds (X) — same bounce-back as before.
-      if (player.x <= 0) {
-        player.x = 0;
-        player.Xv = 80;
-      } else if (player.x + player.width >= WORLD_WIDTH) {
-        player.x = WORLD_WIDTH - player.width;
-        player.Xv = -80;
+      // World bounds use the same shifted collision rectangle.
+      if (hitboxLeftAt(player.x) <= 0) {
+        player.x = -PLAYER_HITBOX_OFFSET_X;
+        player.Xv = 0;
+      } else if (hitboxRightAt(player.x) >= WORLD_WIDTH) {
+        player.x = WORLD_WIDTH - PLAYER_HITBOX_OFFSET_X - player.width;
+        player.Xv = 0;
       }
 
       // ---- Y axis: integrate gravity, then resolve tops/undersides ----
@@ -2556,8 +2574,8 @@
         let movedY = false;
         for (const box of boxes) {
           const horizontalOverlap =
-            player.x + player.width > box.x &&
-            player.x < box.x + box.width;
+            player.x + PLAYER_HITBOX_OFFSET_X + player.width > box.x &&
+            player.x + PLAYER_HITBOX_OFFSET_X < box.x + box.width;
           if (!horizontalOverlap) continue;
 
           const wasAbove = prevY + player.height <= box.y;
@@ -2625,9 +2643,11 @@
 
       // ---- Coin pickup (position is final for this frame at this point) ----
       if (coin != null) {
+        const hitboxLeft = player.x + PLAYER_HITBOX_OFFSET_X;
+        const hitboxRight = hitboxLeft + player.width;
         let coin_touching = 
-          player.x < coin.x + 10 &&
-          player.x + player.width > coin.x &&
+          hitboxLeft < coin.x + 10 &&
+          hitboxRight > coin.x &&
           player.y < coin.y + 10 &&
           player.y + player.height > coin.y
 
