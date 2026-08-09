@@ -85,13 +85,13 @@
     "doubleJump": {
       "enabled": true,
       "costs": [
-        20
+        0
       ]
     },
     "invisibility": {
       "enabled": true,
       "costs": [
-        10,
+        0,
         20,
         30
       ]

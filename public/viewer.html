@@ -916,7 +916,10 @@
     // local camera and sprite feedback.
     const fxParticles = [];
     const fxRings = [];
-    const dashAfterimages = [];
+    // Animated sprite effects (dash smoke, double-jump ring, landing dust,
+    // invisibility flash). Each entry is a short-lived sprite sequence — see
+    // spawnFxSprite() below and drawFxSprites() in the render pass.
+    const fxSprites = [];
     const cameraShakes = [];
     let coinPickupFx = null;
     let hudCoinPulseUntil = 0;
@@ -927,7 +930,37 @@
     let hitStopTimer = 0;
     let pendingKnockback = null;
     let lastHitVisualAt = -Infinity;
-    let dashTrailAccumulator = 0;
+
+    // ---- Sprite-based effect assets ----
+    // Each effect is either a list of individual PNG frames or a single
+    // horizontal sprite sheet. `frames` are Image objects preloaded here; the
+    // draw pass just picks one by elapsed/duration ratio. Dimensions match the
+    // actual assets under public/assets/effects/*.
+    function loadFrames(paths) {
+      return paths.map(src => { const im = new Image(); im.src = src; return im; });
+    }
+    const EFFECT_DASH = {
+      // Horisontal_smoke1..12 — 128x128 puff, aligned behind the dash.
+      frames: loadFrames(Array.from({length:12}, (_,i)=>`/assets/effects/Horisontal_smoke/Horisontal_smoke${i+1}.png`)),
+      w: 128, h: 128, duration: 0.26,
+    };
+    const EFFECT_DOUBLE_JUMP = {
+      // Smoke_ring1_1..7 — 64x64 expanding ring at the player's feet.
+      frames: loadFrames(Array.from({length:7}, (_,i)=>`/assets/effects/Smoke_ring1/Smoke_ring1_${i+1}.png`)),
+      w: 64, h: 64, duration: 0.30,
+    };
+    const EFFECT_LAND = {
+      // Falling_smoke6..16 (odd numbering, but that's the shipped set) —
+      // 154x64 wide dust plume for a hard landing.
+      frames: loadFrames(Array.from({length:11}, (_,i)=>`/assets/effects/Falling_smoke/Falling_smoke${i+6}.png`)),
+      w: 154, h: 64, duration: 0.35,
+    };
+    const EFFECT_INVIS = {
+      // Single 576x72 sprite sheet -> 8 frames of 72x72. Drawn from a source
+      // rect (see drawFxSprites) rather than one image per frame.
+      sheet: (() => { const im = new Image(); im.src = '/assets/effects/invisibility/9.png'; return im; })(),
+      cols: 8, w: 72, h: 72, duration: 0.5,
+    };
 
     const HIT_STOP_SEC = 0.065;
     const BIG_LAND_MIN_SPEED = 360;
@@ -972,14 +1005,19 @@
       fxParticles.push(p);
     }
 
-    function spawnDust(x, y, count = 4) {
-      for (let i = 0; i < count; i++) {
-        pushParticle({
-          type: 'square', x: x + rand(-7, 7), y: y + rand(-2, 2),
-          vx: rand(-42, 42), vy: rand(-62, -24), gravity: 115,
-          size: rand(2.5, 5), color: i % 2 ? '#d9e6cf' : '#a9c2ac', life: rand(0.18, 0.28),
-        });
-      }
+    // Spawn one animated sprite effect. `effect` is one of the EFFECT_* defs
+    // above. Position (x, y) is the TOP-LEFT of the drawn frame in world space;
+    // callers use the helpers below (which center on the player) rather than
+    // computing this raw. `flipX` mirrors the frame (for direction-aware puffs
+    // like dash smoke).
+    function spawnFxSprite(effect, x, y, opts = {}) {
+      fxSprites.push({
+        effect, x, y,
+        flipX: !!opts.flipX,
+        flipY: !!opts.flipY,
+        elapsed: 0,
+        duration: Number(opts.duration) || effect.duration || 0.3,
+      });
     }
 
     function spawnImpactParticles(x, y, dir, tier = 0, maxTier = 3) {
@@ -994,57 +1032,58 @@
       }
     }
 
-    function spawnSpeedLines(dir) {
-      const baseX = player.x + player.width / 2 - dir * 18;
-      const baseY = player.y + player.height / 2;
-      for (let i = 0; i < 2; i++) {
-        pushParticle({
-          type: 'line', x: baseX + rand(-5, 5), y: baseY + rand(-15, 15),
-          vx: -dir * rand(120, 190), vy: rand(-8, 8), gravity: 0,
-          size: rand(9, 17), lineWidth: rand(1.5, 2.5), color: i ? '#7ed957' : '#f3f7ee', life: rand(0.1, 0.18), dir,
-        });
-      }
-    }
-
     function spawnRing(x, y, startRadius, endRadius, life, color = '#f3f7ee', lineWidth = 2) {
       fxRings.push({ x, y, startRadius, endRadius, life, maxLife: life, color, lineWidth });
     }
 
-    function spawnAfterimage() {
-      dashAfterimages.push({
-        x: player.x, y: player.y, skin: player.skin, action: player.action,
-        frameIndex: animations.currentFrame, frameRow: animations.frameRow,
-        life: 0.16, maxLife: 0.16,
-      });
-      if (dashAfterimages.length > 12) dashAfterimages.shift();
-    }
-
+    // ---- Sprite-effect spawns (position centered on player) ----------------
+    // Each of these places one animated sprite effect where it makes sense for
+    // the action. The old ad-hoc particle bursts / speed lines / afterimages
+    // for dash / jump / landing are gone — these sprite animations replace them.
     function triggerJumpFx(doubleJump) {
       jumpStretchStartedAt = performance.now();
       if (doubleJump) {
-        spawnRing(player.x + player.width / 2, player.y + player.height + 4, 4, 30, 0.22, '#7ed957', 2);
-        for (let i = 0; i < 5; i++) {
-          pushParticle({ type:'square', x:player.x + 10 + rand(-10,10), y:player.y + 18 + rand(-2,4),
-            vx:rand(-36,36), vy:rand(18,55), gravity:20, size:rand(2,4), color:'#7ed957', life:rand(.15,.25) });
-        }
-      } else {
-        spawnDust(player.x + player.width / 2, player.y + player.height, 4);
+        // Expanding smoke ring at the player's feet on the second jump.
+        const cx = player.x + player.width / 2, feet = player.y + player.height;
+        spawnFxSprite(EFFECT_DOUBLE_JUMP,
+          cx - EFFECT_DOUBLE_JUMP.w / 2,
+          feet - EFFECT_DOUBLE_JUMP.h / 2 + 4);
       }
+      // Regular jumps stay quiet: they fire constantly, and any recurring puff
+      // quickly reads as visual noise. Only the squash/stretch marks them.
     }
 
     function triggerDashFx() {
-      spawnAfterimage();
-      spawnSpeedLines(dashDir);
+      // Horizontal smoke puff BEHIND the dash direction, centered on the
+      // player. Flip so the smoke tail points back the way you came.
+      const cx = player.x + player.width / 2, cy = player.y + player.height / 2;
+      spawnFxSprite(EFFECT_DASH,
+        cx - EFFECT_DASH.w / 2 - dashDir * 18,
+        cy - EFFECT_DASH.h / 2 - 2,
+        { flipX: dashDir > 0 });
       addCameraShake(1.5, 90, dashDir, 0);
-      dashTrailAccumulator = 0;
     }
 
     function triggerBigLanding(speed) {
       const t = Math.max(0, Math.min(1, (speed - BIG_LAND_MIN_SPEED) / (BIG_LAND_MAX_SPEED - BIG_LAND_MIN_SPEED)));
       addCameraShake(lerp(2, 4, t), 100, 0, 1);
-      spawnDust(player.x + 1, player.y + player.height, 3);
-      spawnDust(player.x + player.width - 1, player.y + player.height, 3);
+      // Wide dust plume at the feet, flipped vertically and nudged up a touch
+      // so it reads as dust kicking up from the ground rather than falling.
+      const cx = player.x + player.width / 2, feet = player.y + player.height;
+      spawnFxSprite(EFFECT_LAND,
+        cx - EFFECT_LAND.w / 2,
+        feet - EFFECT_LAND.h + 0,
+        { flipY: false });
       landingSquashStartedAt = performance.now();
+    }
+
+    function triggerInvisibilityFx() {
+      // Brief shimmer centered on the player when vanishing. The alpha fade to
+      // half-transparent is handled by the normal draw code (see draw()).
+      const cx = player.x + player.width / 2, cy = player.y + player.height / 2;
+      spawnFxSprite(EFFECT_INVIS,
+        cx - EFFECT_INVIS.w / 2 + 5,
+        cy - EFFECT_INVIS.h + 10);
     }
 
     function triggerCoinPickupFx(x, y) {
@@ -1112,17 +1151,11 @@
         fxRings[i].life -= step;
         if (fxRings[i].life <= 0) fxRings.splice(i, 1);
       }
-      for (let i = dashAfterimages.length - 1; i >= 0; i--) {
-        dashAfterimages[i].life -= step;
-        if (dashAfterimages[i].life <= 0) dashAfterimages.splice(i, 1);
-      }
-      if (isDashing) {
-        dashTrailAccumulator += step;
-        if (dashTrailAccumulator >= 0.035) {
-          dashTrailAccumulator = 0;
-          spawnAfterimage();
-          spawnSpeedLines(dashDir);
-        }
+      // Animated sprite effects: advance elapsed time; drawFxSprites picks the
+      // right frame from the ratio and removes them here when finished.
+      for (let i = fxSprites.length - 1; i >= 0; i--) {
+        fxSprites[i].elapsed += step;
+        if (fxSprites[i].elapsed >= fxSprites[i].duration) fxSprites.splice(i, 1);
       }
     }
 
@@ -1196,12 +1229,14 @@
       if (!upgrades.invisibility || player.invisible || invisCooldown > 0) return;
       player.invisible = true;
       invisTimer = INVIS_DURS[upgrades.invisibility - 1] || 2;
-      emitMoveNow(); // tell everyone else to hide us right away
+      triggerInvisibilityFx();   // shimmer at the vanish
+      emitMoveNow();             // tell everyone else to hide us right away
     }
     function endInvisible() {
       if (!player.invisible) return;
       player.invisible = false;
       invisCooldown = INVIS_COOLDOWN;
+      triggerInvisibilityFx();   // shimmer at the re-appear too
       emitMoveNow();
     }
 
@@ -2463,10 +2498,33 @@
       context.restore();
     }
 
-    function drawAfterimages(now) {
-      for (const a of dashAfterimages) {
-        const alpha = Math.max(0, (a.life / a.maxLife) * 0.34);
-        drawSpriteFrame(playObj, skinSheet(a.skin, a.action), a.frameIndex, a.frameRow, a.x - 20, a.y - 20, { alpha });
+    // Draw every active sprite-effect at its current frame. Chosen by ratio of
+    // elapsed / duration, so the animation plays through the full frame list
+    // exactly once regardless of frame rate. `flipX` mirrors the frame in place
+    // (dash smoke uses this to point the tail behind the dash direction).
+    function drawFxSprites() {
+      for (const fx of fxSprites) {
+        const eff = fx.effect;
+        const ratio = Math.min(0.9999, fx.elapsed / fx.duration);
+        // Translate to the corner that becomes the origin after mirroring, so
+        // the drawn frame always occupies the same [fx.x, fx.x+w] x
+        // [fx.y, fx.y+h] rect on screen regardless of flipX/flipY.
+        playObj.save();
+        playObj.translate(fx.x + (fx.flipX ? eff.w : 0), fx.y + (fx.flipY ? eff.h : 0));
+        playObj.scale(fx.flipX ? -1 : 1, fx.flipY ? -1 : 1);
+        if (eff.sheet) {
+          // Single-image sprite sheet (invisibility): blit one 72x72 cell.
+          if (eff.sheet.complete && eff.sheet.naturalWidth) {
+            const idx = Math.floor(ratio * eff.cols);
+            playObj.drawImage(eff.sheet, idx * eff.w, 0, eff.w, eff.h, 0, 0, eff.w, eff.h);
+          }
+        } else {
+          // One image per frame (dash / double-jump / landing).
+          const idx = Math.floor(ratio * eff.frames.length);
+          const im = eff.frames[idx];
+          if (im && im.complete && im.naturalWidth) playObj.drawImage(im, 0, 0, eff.w, eff.h);
+        }
+        playObj.restore();
       }
     }
 
@@ -2576,7 +2634,10 @@
       );
 
       setObjects();
-      drawAfterimages(performance.now());
+      // Sprite-based effects (dash smoke, double-jump ring, landing dust,
+      // invisibility shimmer) render UNDER the players so the puff appears
+      // behind the slime instead of covering it.
+      drawFxSprites();
 
       for (const id in otherPlayers) {
         drawOtherPlayer(otherPlayers[id]);
