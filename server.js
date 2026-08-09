@@ -37,14 +37,58 @@ const io = new Server(server, {
 // Small JSON bodies are used only for the signed-cookie persistence bridge.
 app.use(express.json({ limit: '16kb' }));
 
-// Serve static files from the 'public' directory
+// Serve static files from the 'public' directory.
 app.use(express.static(path.join(__dirname, 'public')));
 
-// NOTE: the visual scene editor is intentionally NOT part of this public
-// server. It runs as a separate, local-only Python tool (scene_editor.py) so
-// the asset-listing and scene-writing endpoints are never exposed online.
-// This server only READS scene.json (for coin spawns, below) — it never lets
-// a remote client modify the level.
+// ---- Public, SAFE level editor ---------------------------------------------
+// Anyone may open /editor.html and build/test a level, but the public editor
+// is deliberately READ-ONLY with respect to the deployed game files:
+//   - there is NO public POST /api/scene or /api/shop route here;
+//   - editor.html stores drafts in that visitor's browser / downloads JSON;
+//   - viewer.html?editorTest=... runs a local isolated test and never joins
+//     the live Socket.IO world.
+// The only editor API exposed online is a read-only list of image assets that
+// are already public through express.static().
+const PUBLIC_DIR = path.join(__dirname, 'public');
+const EDITOR_HTML_PATH = path.join(__dirname, 'tools', 'editor.html');
+const EDIT_ASSETS_DIR = path.join(PUBLIC_DIR, 'assets', 'edit_assets');
+const ALL_ASSETS_DIR = path.join(PUBLIC_DIR, 'assets');
+const EDITOR_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
+
+function listEditorAssets() {
+  const root = fs.existsSync(EDIT_ASSETS_DIR) ? EDIT_ASSETS_DIR : ALL_ASSETS_DIR;
+  const out = [];
+  if (!fs.existsSync(root)) return out;
+
+  const stack = [root];
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+    catch (e) { continue; }
+
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+      } else if (entry.isFile() && EDITOR_IMAGE_EXTS.has(path.extname(entry.name).toLowerCase())) {
+        const rel = path.relative(PUBLIC_DIR, full).split(path.sep).join('/');
+        out.push('/' + rel);
+      }
+    }
+  }
+  out.sort();
+  return out;
+}
+
+app.get(['/editor', '/editor.html'], (req, res) => {
+  res.sendFile(EDITOR_HTML_PATH);
+});
+
+app.get('/api/editor-assets', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ assets: listEditorAssets() });
+});
 
 
 // ---- Signed persistent player state ----------------------------------------
@@ -426,8 +470,9 @@ function relayToTwitch(username, cleanMessage) {
 // ---- Game state ------------------------------------------------------------
 let players = {};
 
-// The coin spawn points come from scene.json (authored in editor.html) so the
-// server, the game, and the overlay all read the SAME level from one file. If
+// The live coin spawn points come from the deployed scene.json so the server,
+// game and overlay all read the SAME published level. Public editor drafts are
+// browser-local and never touch this file. If
 // the scene can't be read or has no coins, we fall back to this built-in list
 // so the game still works exactly as before.
 const FALLBACK_COINS = [
@@ -459,8 +504,8 @@ function loadCoinsFromScene() {
   }
 }
 
-// `let` (not const) so re-saving the scene from the editor can hot-swap the
-// spawn points without a server restart (see POST /api/scene below).
+// Kept as `let` so an owner-only/admin publish mechanism could hot-swap this
+// later. The public editor never mutates it.
 let coins = loadCoinsFromScene() || FALLBACK_COINS;
 console.log(`[scene] loaded ${coins.length} coin spawn points`);
 

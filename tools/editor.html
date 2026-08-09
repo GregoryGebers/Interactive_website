@@ -243,19 +243,23 @@
     <div class="sep"></div>
     <button class="btn gold" id="shopSettingsBtn" title="Configure cosmetics, upgrades and combat prices">🛒 Shop Settings</button>
     <div class="toolbar-spacer"></div>
-    <button class="btn ghost" id="loadBtn" title="Reload scene.json from server">⟳ Reload</button>
-    <button class="btn" id="exportBtn" title="Download scene.json">⭳ Export</button>
-    <button class="btn ghost" id="testBtn" title="Open the game in a new tab">▶ Test</button>
-    <button class="btn gold" id="saveBtn" title="Save to scene.json (Ctrl+S)">💾 Save</button>
+    <button class="btn ghost" id="loadBtn" title="Load the currently published level/shop as a fresh starting point">⟳ Load Live</button>
+    <button class="btn ghost" id="importSceneBtn" title="Open a scene.json file from your computer">⇧ Import Scene</button>
+    <button class="btn ghost" id="importShopBtn" title="Open a shop.json file from your computer">⇧ Import Shop</button>
+    <button class="btn" id="exportBtn" title="Download your current scene as scene.json">⭳ Export Scene</button>
+    <button class="btn ghost" id="testBtn" title="Test this draft in a completely isolated single-player session">▶ Test Draft</button>
+    <button class="btn gold" id="saveBtn" title="Save this draft in this browser (Ctrl+S)">💾 Save Draft</button>
     <span id="status">ready</span>
   </div>
+  <input id="sceneFileInput" type="file" accept="application/json,.json" hidden>
+  <input id="shopFileInput" type="file" accept="application/json,.json" hidden>
 
   <!-- ================= MAIN ================= -->
   <div id="main">
     <!-- Asset browser -->
     <div id="assets">
       <h2>ASSETS</h2>
-      <p class="assets-hint">Put art in <b>public/assets/edit_assets/</b> (in folders), then <b>Reload</b>. Drag an asset onto the scene, or click it then click the canvas.</p>
+      <p class="assets-hint">Drag an available asset onto the scene, or click it then click the canvas. Your edits stay in your browser until you export the JSON.</p>
       <div id="assetList"></div>
     </div>
 
@@ -283,10 +287,11 @@
     <div class="shop-settings-header">
       <div>
         <div class="shop-settings-title" id="shopSettingsTitle">SHOP SETTINGS</div>
-        <div class="shop-settings-subtitle">Controls public/shop.json · server prices remain authoritative</div>
+        <div class="shop-settings-subtitle">Draft shop settings · public editing never changes the live server</div>
       </div>
-      <button class="btn ghost" id="shopSettingsReload">⟳ Reload Shop</button>
-      <button class="btn gold" id="shopSettingsSave">💾 Save Shop</button>
+      <button class="btn ghost" id="shopSettingsReload">⟳ Load Live Shop</button>
+      <button class="btn ghost" id="shopSettingsExport">⭳ Export Shop</button>
+      <button class="btn gold" id="shopSettingsSave">💾 Save Draft Shop</button>
       <button class="btn danger" id="shopSettingsClose">✕ Close</button>
     </div>
     <div class="shop-settings-tabs">
@@ -330,6 +335,16 @@ const scene = {
   hitboxes: [],   // { x, y, width, height, groupId? }       — collision
   coins: [],      // { x, y, groupId? }                      — coin spawn points
 };
+
+// Public editor safety: on eberhex.com this page NEVER writes deployed files.
+// Drafts live in this browser and Test Draft passes a one-off snapshot to
+// viewer.html, which runs without joining the live Socket.IO world. The old
+// localhost Python editor keeps its project-file save behavior for the owner.
+const LOCAL_EDITOR_BACKEND = ['127.0.0.1', 'localhost'].includes(window.location.hostname) &&
+  ['8000', '9000'].includes(window.location.port);
+const DRAFT_SCENE_KEY = 'eberhex.sceneBuilder.scene.v1';
+const DRAFT_SHOP_KEY = 'eberhex.sceneBuilder.shop.v1';
+const TEST_SNAPSHOT_PREFIX = 'eberhex.sceneBuilder.test.';
 
 
 // ---- Shop/combat tuning (saved separately to public/shop.json) ------------
@@ -1220,6 +1235,7 @@ function closeShopSettings() {
 document.getElementById('shopSettingsBtn').addEventListener('click', openShopSettings);
 document.getElementById('shopSettingsClose').addEventListener('click', closeShopSettings);
 document.getElementById('shopSettingsSave').addEventListener('click', saveShopOnly);
+document.getElementById('shopSettingsExport').addEventListener('click', exportShop);
 document.getElementById('shopSettingsReload').addEventListener('click', async () => {
   await loadShop(true); renderShopSettings();
 });
@@ -1315,10 +1331,10 @@ function pasteSelection() {
 async function loadAssets() {
   const listEl = document.getElementById('assetList');
   try {
-    const res = await fetch('/api/assets');
+    const res = await fetch(LOCAL_EDITOR_BACKEND ? '/api/assets' : '/api/editor-assets', { cache: 'no-store' });
     const { assets } = await res.json();
     if (!assets.length) {
-      listEl.innerHTML = '<p class="assets-hint">No images found. Add art under <b>public/assets/edit_assets/</b> and click Reload.</p>';
+      listEl.innerHTML = '<p class="assets-hint">No editor assets are currently available.</p>';
       return;
     }
     // Build a nested tree from the path segments after /assets/[edit_assets/],
@@ -1431,7 +1447,11 @@ document.getElementById('gridSize').addEventListener('input', e => gridSize = Ma
 document.getElementById('saveBtn').addEventListener('click', saveScene);
 document.getElementById('exportBtn').addEventListener('click', exportScene);
 document.getElementById('loadBtn').addEventListener('click', () => loadAll(true));
-document.getElementById('testBtn').addEventListener('click', () => window.open('/viewer.html', '_blank'));
+document.getElementById('importSceneBtn').addEventListener('click', () => document.getElementById('sceneFileInput').click());
+document.getElementById('importShopBtn').addEventListener('click', () => document.getElementById('shopFileInput').click());
+document.getElementById('sceneFileInput').addEventListener('change', e => importSceneFile(e.target));
+document.getElementById('shopFileInput').addEventListener('change', e => importShopFile(e.target));
+document.getElementById('testBtn').addEventListener('click', testDraft);
 
 // ============================================================================
 //  SAVE / LOAD / EXPORT
@@ -1464,42 +1484,71 @@ function cleanScene() {
   };
 }
 
-async function saveShopOnly() {
-  setStatus('saving shop…');
+function persistBrowserDraft({ sceneOnly = false, shopOnly = false } = {}) {
   try {
-    const res = await fetch('/api/shop', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cleanShopConfig()),
-    });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || ('Shop HTTP ' + res.status));
-    setStatus('shop saved ✓', 'ok');
+    if (!shopOnly) localStorage.setItem(DRAFT_SCENE_KEY, JSON.stringify(cleanScene()));
+    if (!sceneOnly) localStorage.setItem(DRAFT_SHOP_KEY, JSON.stringify(cleanShopConfig()));
+    return true;
   } catch (e) {
-    setStatus('shop save failed', 'err');
-    console.error(e);
+    console.error('Could not save browser draft:', e);
+    return false;
   }
 }
 
-async function saveScene() {
-  setStatus('saving…');
-  try {
-    const [sceneRes, shopRes] = await Promise.all([
-      fetch('/api/scene', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cleanScene()),
-      }),
-      fetch('/api/shop', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cleanShopConfig()),
-      }),
-    ]);
-    if (!sceneRes.ok) throw new Error((await sceneRes.json().catch(() => ({}))).error || ('Scene HTTP ' + sceneRes.status));
-    if (!shopRes.ok) throw new Error((await shopRes.json().catch(() => ({}))).error || ('Shop HTTP ' + shopRes.status));
-    setStatus('scene + shop saved ✓', 'ok');
-  } catch (e) {
-    setStatus('save failed', 'err');
-    console.error(e);
+async function saveShopOnly() {
+  if (!persistBrowserDraft({ shopOnly: true })) {
+    setStatus('browser draft save failed', 'err');
+    return;
   }
+
+  // Preserve the owner's old localhost workflow, but NEVER expose these write
+  // calls from the public Node editor.
+  if (LOCAL_EDITOR_BACKEND) {
+    setStatus('saving shop…');
+    try {
+      const res = await fetch('/api/shop', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cleanShopConfig()),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || ('Shop HTTP ' + res.status));
+      setStatus('shop draft + local shop.json saved ✓', 'ok');
+    } catch (e) {
+      setStatus('draft saved; local file save failed', 'err');
+      console.error(e);
+    }
+    return;
+  }
+
+  setStatus('shop draft saved in this browser ✓', 'ok');
+}
+
+async function saveScene() {
+  if (!persistBrowserDraft()) {
+    setStatus('browser draft save failed', 'err');
+    return;
+  }
+
+  if (LOCAL_EDITOR_BACKEND) {
+    setStatus('saving local project files…');
+    try {
+      const [sceneRes, shopRes] = await Promise.all([
+        fetch('/api/scene', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cleanScene()),
+        }),
+        fetch('/api/shop', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cleanShopConfig()),
+        }),
+      ]);
+      if (!sceneRes.ok) throw new Error((await sceneRes.json().catch(() => ({}))).error || ('Scene HTTP ' + sceneRes.status));
+      if (!shopRes.ok) throw new Error((await shopRes.json().catch(() => ({}))).error || ('Shop HTTP ' + shopRes.status));
+      setStatus('draft + local scene/shop saved ✓', 'ok');
+    } catch (e) {
+      setStatus('draft saved; local file save failed', 'err');
+      console.error(e);
+    }
+    return;
+  }
+
+  setStatus('draft saved in this browser ✓', 'ok');
 }
 
 function cleanShopConfig() {
@@ -1563,18 +1612,63 @@ function normalizeEditorShopConfig(raw) {
   return out;
 }
 
+function applyShopData(raw) {
+  shopConfig = normalizeEditorShopConfig(raw);
+  if (!selection) renderInspector();
+  if (shopSettingsOverlay && shopSettingsOverlay.classList.contains('open')) renderShopSettings();
+}
+
 async function loadShop(announce) {
   try {
     const res = await fetch('/shop.json', { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    shopConfig = normalizeEditorShopConfig(await res.json());
-    if (!selection) renderInspector();
-    if (shopSettingsOverlay && shopSettingsOverlay.classList.contains('open')) renderShopSettings();
+    applyShopData(await res.json());
+    if (announce) setStatus('live shop loaded ✓', 'ok');
     return true;
   } catch (e) {
-    shopConfig = normalizeEditorShopConfig(DEFAULT_SHOP_CONFIG);
+    applyShopData(DEFAULT_SHOP_CONFIG);
     console.warn('loadShop:', e);
-    if (announce) setStatus('shop reload failed', 'err');
+    if (announce) setStatus('live shop load failed', 'err');
+    return false;
+  }
+}
+
+function applySceneData(s) {
+  if (!s || typeof s !== 'object') throw new Error('Scene JSON must be an object.');
+  if (!s.world || !Number.isFinite(Number(s.world.width)) || !Number.isFinite(Number(s.world.height))) {
+    throw new Error('Scene JSON needs numeric world.width and world.height.');
+  }
+  scene.world = { width: +s.world.width || 3000, height: +s.world.height || 500 };
+  if (s.playerStart) scene.playerStart = { x: +s.playerStart.x || 0, y: +s.playerStart.y || 0 };
+  if (s.ground) scene.ground = {
+    sprite: s.ground.sprite || '/assets/obstacles/grass.png',
+    height: Number.isFinite(Number(s.ground.height)) ? +s.ground.height : 14,
+    tileWidth: +s.ground.tileWidth || 40,
+  };
+  const cam = s.camera && typeof s.camera === 'object' ? s.camera : {};
+  scene.camera.baseZoom = Math.max(0.25, Math.min(3, Number(cam.baseZoom) || 1));
+  scene.camera.zoomZones = Array.isArray(cam.zoomZones) ? cam.zoomZones
+    .filter(z => z && Number.isFinite(Number(z.x)) && Number.isFinite(Number(z.y)))
+    .map(z => ({ x:+z.x, y:+z.y, width:+z.width || 200, height:+z.height || 150, zoom:Math.max(0.25, Math.min(3, Number(z.zoom) || 1)) })) : [];
+  scene.props = Array.isArray(s.props) ? s.props
+    .filter(p => p && typeof p.src === 'string')
+    .map(p => ({ src: p.src, x: +p.x || 0, y: +p.y || 0, width: +p.width || 0, height: +p.height || 0, ...(p.groupId ? {groupId:String(p.groupId)} : {}) })) : [];
+  scene.hitboxes = Array.isArray(s.hitboxes) ? s.hitboxes.map(b => ({ x: +b.x || 0, y: +b.y || 0, width: +b.width || 20, height: +b.height || 20, ...(b.groupId ? {groupId:String(b.groupId)} : {}) })) : [];
+  scene.coins = Array.isArray(s.coins) ? s.coins.map(c => ({ x: +c.x || 0, y: +c.y || 0, ...(c.groupId ? {groupId:String(c.groupId)} : {}) })) : [];
+  clearSelection();
+  renderInspector();
+}
+
+async function loadScene(announce) {
+  try {
+    const res = await fetch('/scene.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    applySceneData(await res.json());
+    if (announce) setStatus('live scene loaded ✓', 'ok');
+    return true;
+  } catch (e) {
+    if (announce) setStatus('live scene load failed', 'err');
+    console.warn('loadScene:', e);
     return false;
   }
 }
@@ -1583,45 +1677,112 @@ async function loadAll(announce) {
   const results = await Promise.all([loadScene(false), loadShop(false)]);
   clearSelection();
   renderInspector();
-  if (announce) setStatus('scene + shop reloaded ✓', 'ok');
+  fitView();
+  if (announce) { persistBrowserDraft(); setStatus('published scene + shop copied into your draft ✓', 'ok'); }
   return results;
 }
 
-function exportScene() {
-  const blob = new Blob([JSON.stringify(cleanScene(), null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = 'scene.json';
-  a.click(); URL.revokeObjectURL(a.href);
-  setStatus('exported ✓', 'ok');
+function loadBrowserDraft() {
+  const restored = { scene: false, shop: false };
+  try {
+    const sceneRaw = localStorage.getItem(DRAFT_SCENE_KEY);
+    if (sceneRaw) { applySceneData(JSON.parse(sceneRaw)); restored.scene = true; }
+  } catch (e) { console.warn('Could not restore scene draft:', e); }
+  try {
+    const shopRaw = localStorage.getItem(DRAFT_SHOP_KEY);
+    if (shopRaw) { applyShopData(JSON.parse(shopRaw)); restored.shop = true; }
+  } catch (e) { console.warn('Could not restore shop draft:', e); }
+  return restored;
 }
 
-async function loadScene(announce) {
+async function loadDraftOrLive() {
+  const restored = loadBrowserDraft();
+  if (!restored.scene) await loadScene(false);
+  if (!restored.shop) await loadShop(false);
+  if (restored.scene || restored.shop) setStatus('browser draft restored ✓', 'ok');
+}
+
+function downloadJson(filename, value) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+function exportScene() {
+  downloadJson('scene.json', cleanScene());
+  setStatus('scene.json exported ✓', 'ok');
+}
+
+function exportShop() {
+  downloadJson('shop.json', cleanShopConfig());
+  setStatus('shop.json exported ✓', 'ok');
+}
+
+async function readJsonFile(file) {
+  if (!file) throw new Error('No file selected.');
+  if (file.size > 4 * 1024 * 1024) throw new Error('JSON file is larger than 4 MB.');
+  return JSON.parse(await file.text());
+}
+
+async function importSceneFile(input) {
   try {
-    const res = await fetch('/scene.json', { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const s = await res.json();
-    if (s.world) scene.world = { width: +s.world.width || 3000, height: +s.world.height || 500 };
-    if (s.playerStart) scene.playerStart = { x: +s.playerStart.x || 0, y: +s.playerStart.y || 0 };
-    if (s.ground) scene.ground = {
-      sprite: s.ground.sprite || '/assets/obstacles/grass.png',
-      height: +s.ground.height || 14, tileWidth: +s.ground.tileWidth || 40,
-    };
-    const cam = s.camera && typeof s.camera === 'object' ? s.camera : {};
-    scene.camera.baseZoom = Math.max(0.25, Math.min(3, Number(cam.baseZoom) || 1));
-    scene.camera.zoomZones = Array.isArray(cam.zoomZones) ? cam.zoomZones
-      .filter(z => z && Number.isFinite(Number(z.x)) && Number.isFinite(Number(z.y)))
-      .map(z => ({ x:+z.x, y:+z.y, width:+z.width || 200, height:+z.height || 150, zoom:Math.max(0.25, Math.min(3, Number(z.zoom) || 1)) })) : [];
-    scene.props = Array.isArray(s.props) ? s.props.map(p => ({ src: p.src, x: +p.x, y: +p.y, width: +p.width || 0, height: +p.height || 0, ...(p.groupId ? {groupId:String(p.groupId)} : {}) })) : [];
-    scene.hitboxes = Array.isArray(s.hitboxes) ? s.hitboxes.map(b => ({ x: +b.x, y: +b.y, width: +b.width || 20, height: +b.height || 20, ...(b.groupId ? {groupId:String(b.groupId)} : {}) })) : [];
-    scene.coins = Array.isArray(s.coins) ? s.coins.map(c => ({ x: +c.x, y: +c.y, ...(c.groupId ? {groupId:String(c.groupId)} : {}) })) : [];
-    clearSelection();
-    renderInspector();
-    if (announce) setStatus('reloaded ✓', 'ok');
-    return true;
+    const parsed = await readJsonFile(input.files && input.files[0]);
+    applySceneData(parsed);
+    persistBrowserDraft({ sceneOnly: true });
+    fitView();
+    setStatus('scene JSON imported + draft saved ✓', 'ok');
   } catch (e) {
-    if (announce) setStatus('reload failed', 'err');
-    console.warn('loadScene:', e);
-    return false;
+    console.error(e);
+    setStatus('invalid scene JSON', 'err');
+  } finally {
+    input.value = '';
+  }
+}
+
+async function importShopFile(input) {
+  try {
+    const parsed = await readJsonFile(input.files && input.files[0]);
+    if (!parsed || typeof parsed !== 'object' || !parsed.cosmetics || !parsed.upgrades) {
+      throw new Error('Shop JSON needs cosmetics and upgrades objects.');
+    }
+    applyShopData(parsed);
+    persistBrowserDraft({ shopOnly: true });
+    renderShopSettings();
+    setStatus('shop JSON imported + draft saved ✓', 'ok');
+  } catch (e) {
+    console.error(e);
+    setStatus('invalid shop JSON', 'err');
+  } finally {
+    input.value = '';
+  }
+}
+
+function testDraft() {
+  try {
+    // Save first so returning to /editor.html restores exactly what was tested.
+    persistBrowserDraft();
+    const token = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const payload = { scene: cleanScene(), shop: cleanShopConfig(), createdAt: Date.now() };
+    localStorage.setItem(TEST_SNAPSHOT_PREFIX + token, JSON.stringify(payload));
+
+    // Clean old test snapshots opportunistically so repeated tests do not grow
+    // localStorage forever. Current + recent tabs are kept for reloads.
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith(TEST_SNAPSHOT_PREFIX) || key === TEST_SNAPSHOT_PREFIX + token) continue;
+      try {
+        const old = JSON.parse(localStorage.getItem(key));
+        if (!old || Number(old.createdAt) < cutoff) localStorage.removeItem(key);
+      } catch (_) { localStorage.removeItem(key); }
+    }
+
+    window.open(`/viewer.html?editorTest=${encodeURIComponent(token)}`, '_blank', 'noopener');
+    setStatus('isolated test opened ✓', 'ok');
+  } catch (e) {
+    console.error(e);
+    setStatus('could not start test', 'err');
   }
 }
 
@@ -1666,7 +1827,7 @@ window.addEventListener('keyup', (e) => {
 // ============================================================================
 resize();
 loadAssets();
-loadAll(false).then(() => { fitView(); renderInspector(); });
+loadDraftOrLive().then(() => { fitView(); renderInspector(); });
 syncToolButtons();
 updateZoomLabel();
 requestAnimationFrame(render);

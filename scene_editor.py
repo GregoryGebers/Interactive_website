@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Scene Builder — LOCAL-ONLY level editor for the platformer game.
+Scene Builder — OWNER-ONLY local backend for the platformer editor.
 
-This is a small self-contained web server (Python standard library only, no
-pip installs) that hosts the visual scene editor in your browser. It is
-deliberately separate from server.js and binds to 127.0.0.1 (localhost) ONLY,
-so it can never be reached from the internet — the asset-listing and
-scene-writing endpoints stay on your machine.
+The deployed Node server can now serve the SAFE public editor at /editor.html,
+but it exposes no scene/shop write endpoints. This Python helper remains useful
+for the owner: it binds to 127.0.0.1 only and provides the local /api/scene and
+/api/shop writes that editor.html enables only on localhost ports 8000/9000.
 
 What it does:
   • serves the editor UI (tools/editor.html) at  http://127.0.0.1:8000/
@@ -19,9 +18,9 @@ Usage:
     python scene_editor.py            # opens on http://127.0.0.1:8000
     python scene_editor.py 9000       # choose a different port
 
-Then edit your level, hit Save, and the game (viewer.html / overlay.html) and
-server.js will all pick up the new public/scene.json. If server.js is already
-running, restart it so it re-reads the coin spawn points.
+On localhost, Save Draft also writes public/scene.json and public/shop.json
+through this private helper. Test Draft is still isolated and does not join the
+live multiplayer server.
 """
 
 import json
