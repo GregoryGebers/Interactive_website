@@ -911,9 +911,9 @@
 
 
     // ---- Game-feel / juice effects ----------------------------------------
-    // Viewer-only feedback. Nothing in this block is sent to overlay.html, so
-    // the OBS/stream view remains stable while each player gets responsive
-    // local camera and sprite feedback.
+    // Visual effects are shared through the server so other players and the
+    // stream overlay can see them too. Camera shake remains deliberately local
+    // to this browser so one player's impact never shakes everybody's screen.
     const fxParticles = [];
     const fxRings = [];
     // Animated sprite effects (dash smoke, double-jump ring, landing dust,
@@ -940,9 +940,9 @@
       return paths.map(src => { const im = new Image(); im.src = src; return im; });
     }
     const EFFECT_DASH = {
-      // Horisontal_smoke1..12 — 128x128 puff, aligned behind the dash.
+      // Horisontal_smoke1..12 — tuned to 100x100, aligned behind the dash.
       frames: loadFrames(Array.from({length:12}, (_,i)=>`/assets/effects/Horisontal_smoke/Horisontal_smoke${i+1}.png`)),
-      w: 128, h: 128, duration: 0.26,
+      w: 100, h: 100, duration: 0.26,
     };
     const EFFECT_DOUBLE_JUMP = {
       // Smoke_ring1_1..7 — 64x64 expanding ring at the player's feet.
@@ -951,9 +951,9 @@
     };
     const EFFECT_LAND = {
       // Falling_smoke6..16 (odd numbering, but that's the shipped set) —
-      // 154x64 wide dust plume for a hard landing.
+      // Tuned to 117x48 wide dust plume for a hard landing.
       frames: loadFrames(Array.from({length:11}, (_,i)=>`/assets/effects/Falling_smoke/Falling_smoke${i+6}.png`)),
-      w: 154, h: 64, duration: 0.35,
+      w: 117, h: 48, duration: 0.35,
     };
     const EFFECT_INVIS = {
       // Single 576x72 sprite sheet -> 8 frames of 72x72. Drawn from a source
@@ -1020,6 +1020,15 @@
       });
     }
 
+    // Tell the server about a visual-only action. The server validates and
+    // rate-limits these before broadcasting them to everyone ELSE. We render
+    // our own effect immediately for responsiveness, so the sender is excluded
+    // from the rebroadcast and never sees a duplicate.
+    function emitSharedFx(type, extra = {}) {
+      if (!socket.connected || !hasJoined) return;
+      socket.emit('player-fx', { type, x: player.x, y: player.y, ...extra });
+    }
+
     function spawnImpactParticles(x, y, dir, tier = 0, maxTier = 3) {
       const count = Math.round(lerp(3, 6, maxTier > 0 ? tier / maxTier : 0));
       for (let i = 0; i < count; i++) {
@@ -1047,10 +1056,13 @@
         const cx = player.x + player.width / 2, feet = player.y + player.height;
         spawnFxSprite(EFFECT_DOUBLE_JUMP,
           cx - EFFECT_DOUBLE_JUMP.w / 2,
-          feet - EFFECT_DOUBLE_JUMP.h / 2 + 4);
+          feet - EFFECT_DOUBLE_JUMP.h / 2);
+        emitSharedFx('double-jump');
+      } else {
+        // Regular jump has only the squash/stretch, but that visual is shared
+        // too so other players see the same motion language.
+        emitSharedFx('jump');
       }
-      // Regular jumps stay quiet: they fire constantly, and any recurring puff
-      // quickly reads as visual noise. Only the squash/stretch marks them.
     }
 
     function triggerDashFx() {
@@ -1059,8 +1071,10 @@
       const cx = player.x + player.width / 2, cy = player.y + player.height / 2;
       spawnFxSprite(EFFECT_DASH,
         cx - EFFECT_DASH.w / 2 - dashDir * 18,
-        cy - EFFECT_DASH.h / 2 - 2,
+        cy - EFFECT_DASH.h / 2,
         { flipX: dashDir > 0 });
+      emitSharedFx('dash', { dir: dashDir });
+      // Shake is LOCAL ONLY. It is intentionally never sent over the socket.
       addCameraShake(1.5, 90, dashDir, 0);
     }
 
@@ -1075,20 +1089,21 @@
         feet - EFFECT_LAND.h + 0,
         { flipY: false });
       landingSquashStartedAt = performance.now();
+      emitSharedFx('land', { speed });
     }
 
-    function triggerInvisibilityFx() {
-      // Brief shimmer centered on the player when vanishing. The alpha fade to
-      // half-transparent is handled by the normal draw code (see draw()).
+    function triggerInvisibilityFx(phase = 'toggle') {
+      // Brief shimmer centered on the player when vanishing/reappearing.
       const cx = player.x + player.width / 2, cy = player.y + player.height / 2;
       spawnFxSprite(EFFECT_INVIS,
         cx - EFFECT_INVIS.w / 2 + 5,
         cy - EFFECT_INVIS.h + 10);
+      emitSharedFx('invisibility', { phase });
     }
 
-    function triggerCoinPickupFx(x, y) {
+    function triggerCoinPickupFx(x, y, pulseHud = true) {
       coinPickupFx = { x, y, start: performance.now(), duration: 120 };
-      hudCoinPulseUntil = performance.now() + 190;
+      if (pulseHud) hudCoinPulseUntil = performance.now() + 190;
       for (let i = 0; i < 4; i++) {
         pushParticle({ type:'square', x:x + 10, y:y + 10, vx:rand(-70,70), vy:rand(-115,-45), gravity:250,
           size:rand(2.5,4.5), color:'#ffc145', life:rand(.2,.32) });
@@ -1131,6 +1146,25 @@
       }
       const jumpAge = now - jumpStretchStartedAt;
       if (jumpStretchStartedAt && jumpAge >= 0 && jumpAge < 80) {
+        const t = jumpAge / 80;
+        return { x: lerp(0.9, 1, t), y: lerp(1.1, 1, t) };
+      }
+      return { x: 1, y: 1 };
+    }
+
+    function remoteSpriteScale(p, now = performance.now()) {
+      if (now < (p.hitSquashUntil || 0)) return { x: 0.72, y: 1.18 };
+      const landAge = now - (p.landingSquashStartedAt || 0);
+      if (p.landingSquashStartedAt && landAge >= 0 && landAge < 180) {
+        if (landAge < 80) {
+          const t = landAge / 80;
+          return { x: lerp(1.15, 0.95, t), y: lerp(0.85, 1.05, t) };
+        }
+        const t = (landAge - 80) / 100;
+        return { x: lerp(0.95, 1, t), y: lerp(1.05, 1, t) };
+      }
+      const jumpAge = now - (p.jumpStretchStartedAt || 0);
+      if (p.jumpStretchStartedAt && jumpAge >= 0 && jumpAge < 80) {
         const t = jumpAge / 80;
         return { x: lerp(0.9, 1, t), y: lerp(1.1, 1, t) };
       }
@@ -1229,14 +1263,14 @@
       if (!upgrades.invisibility || player.invisible || invisCooldown > 0) return;
       player.invisible = true;
       invisTimer = INVIS_DURS[upgrades.invisibility - 1] || 2;
-      triggerInvisibilityFx();   // shimmer at the vanish
+      triggerInvisibilityFx('vanish');   // shimmer at the vanish
       emitMoveNow();             // tell everyone else to hide us right away
     }
     function endInvisible() {
       if (!player.invisible) return;
       player.invisible = false;
       invisCooldown = INVIS_COOLDOWN;
-      triggerInvisibilityFx();   // shimmer at the re-appear too
+      triggerInvisibilityFx('appear');   // shimmer at the re-appear too
       emitMoveNow();
     }
 
@@ -1690,6 +1724,54 @@
       delete otherPlayers[id];
     });
 
+    // Visual-only actions from OTHER players. These never call addCameraShake,
+    // so remote activity cannot shake this player's camera.
+    socket.on('player-fx', (data) => {
+      if (!data || data.id === socket.id) return;
+      const x = Number(data.x), y = Number(data.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      const p = otherPlayers[data.id];
+      const now = performance.now();
+      const type = String(data.type || '');
+
+      if (type === 'dash') {
+        const dir = Number(data.dir) === -1 ? -1 : 1;
+        const cx = x + 10, cy = y + 10;
+        spawnFxSprite(EFFECT_DASH,
+          cx - EFFECT_DASH.w / 2 - dir * 18,
+          cy - EFFECT_DASH.h / 2,
+          { flipX: dir > 0 });
+      } else if (type === 'jump') {
+        if (p) p.jumpStretchStartedAt = now;
+      } else if (type === 'double-jump') {
+        const cx = x + 10, feet = y + 20;
+        spawnFxSprite(EFFECT_DOUBLE_JUMP,
+          cx - EFFECT_DOUBLE_JUMP.w / 2,
+          feet - EFFECT_DOUBLE_JUMP.h / 2);
+        if (p) p.jumpStretchStartedAt = now;
+      } else if (type === 'land') {
+        const cx = x + 10, feet = y + 20;
+        spawnFxSprite(EFFECT_LAND,
+          cx - EFFECT_LAND.w / 2,
+          feet - EFFECT_LAND.h,
+          { flipY: false });
+        if (p) p.landingSquashStartedAt = now;
+      } else if (type === 'invisibility') {
+        const cx = x + 10, cy = y + 10;
+        spawnFxSprite(EFFECT_INVIS,
+          cx - EFFECT_INVIS.w / 2 + 5,
+          cy - EFFECT_INVIS.h + 10);
+      }
+    });
+
+    // Coin pickup is server-authoritative. Other players see the world-space
+    // pop/particles, but only the collector's own HUD gets the score pulse.
+    socket.on('coin-fx', (data) => {
+      if (!data || data.id === socket.id) return;
+      const x = Number(data.x), y = Number(data.y);
+      if (Number.isFinite(x) && Number.isFinite(y)) triggerCoinPickupFx(x, y, false);
+    });
+
     // How quickly the rendered position catches up to the real one. Smaller
     // = snappier but more visible stutter; larger = smoother but more lag.
     const OTHER_PLAYER_SMOOTHING_TAU = 0.08; // seconds
@@ -1720,10 +1802,13 @@
         const emote = stale ? 'idle' : (p.emote || 'idle');
         const frameCount = emote === 'run' ? 8 : 6;
 
-        p.localFrameTimer = (p.localFrameTimer || 0) + deltaTime;
-        if (p.localFrameTimer >= OTHER_PLAYER_FRAME_INTERVAL) {
-          p.localFrameTimer -= OTHER_PLAYER_FRAME_INTERVAL;
-          p.localFrameIndex = ((p.localFrameIndex || 0) + 1) % frameCount;
+        const visuallyFrozen = now < (p.hitStopUntil || 0);
+        if (!visuallyFrozen) {
+          p.localFrameTimer = (p.localFrameTimer || 0) + deltaTime;
+          if (p.localFrameTimer >= OTHER_PLAYER_FRAME_INTERVAL) {
+            p.localFrameTimer -= OTHER_PLAYER_FRAME_INTERVAL;
+            p.localFrameIndex = ((p.localFrameIndex || 0) + 1) % frameCount;
+          }
         }
         if (!(p.localFrameIndex < frameCount)) p.localFrameIndex = 0;
 
@@ -1875,6 +1960,9 @@
       const attackerId = String(data.attackerId || '');
 
       triggerHitVisuals(targetId, dir, tier, maxTier);
+      if (targetId !== socket.id && otherPlayers[targetId]) {
+        otherPlayers[targetId].hitStopUntil = performance.now() + HIT_STOP_SEC * 1000;
+      }
       if (targetId === socket.id) {
         const strength = lerp(4, 8, Math.min(1, tier / maxTier));
         const duration = Math.round(lerp(120, 180, Math.min(1, tier / maxTier)));
@@ -2601,11 +2689,11 @@
       const ry = p.renderY ?? p.y;
 
       const now = performance.now();
-      const hitSquash = now < (p.hitSquashUntil || 0);
+      const remoteScale = remoteSpriteScale(p, now);
       drawSpriteFrame(
         playObj, sprite, p.displayFrameIndex || 0, p.displayFrameRow || 0,
         rx - 20, ry - 20,
-        { whiteFlash: now < (p.hitFlashUntil || 0), scaleX: hitSquash ? 0.72 : 1, scaleY: hitSquash ? 1.18 : 1 }
+        { whiteFlash: now < (p.hitFlashUntil || 0), scaleX: remoteScale.x, scaleY: remoteScale.y }
       );
 
       playObj.font = '16px Arial';
