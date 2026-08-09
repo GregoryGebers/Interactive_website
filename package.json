@@ -1,16 +1,27 @@
 {
   "name": "twitch-overlay-game",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Multiplayer browser platformer with a Twitch background, an OBS stream overlay, and a visual scene editor.",
+  "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node --test"
   },
-  "keywords": [],
+  "keywords": [
+    "twitch",
+    "overlay",
+    "game",
+    "socket.io",
+    "multiplayer"
+  ],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "express": "^5.1.0",
     "socket.io": "^4.8.1"
+  },
+  "optionalDependencies": {
+    "leo-profanity": "^1.7.0"
   }
 }

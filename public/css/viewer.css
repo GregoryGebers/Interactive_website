@@ -1,0 +1,462 @@
+    :root {
+      /* Palette pulled from the game itself: slime green + grass, with a
+         warm gold pop for the primary action so it doesn't get lost against
+         all the green. Hard edges + offset shadows instead of blur, to read
+         as pixel/arcade rather than generic modern UI. */
+      --ink: #16241a;
+      --panel: #1f3326;
+      --panel-light: #294633;
+      --slime: #7ed957;
+      --slime-dark: #4c9a2a;
+      --gold: #ffc145;
+      --gold-dark: #c9891f;
+      --cream: #f3f7ee;
+      --muted: #a9c2ac;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: black;
+    }
+
+    /* Twitch stream as BACKGROUND, fills the whole viewport. Starts with
+       pointer-events:none (game canvas above it gets all clicks/keys by
+       default) — the #twitchControls button toggles this and the canvas's
+       pointer-events in tandem so the player can be interacted with
+       directly when needed. */
+    #twitchBg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      border: 0;
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    #game {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 5; /* above twitch */
+      background: transparent;
+      display: block;
+    }
+
+    #loginOverlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 16, 11, 0.72);
+      z-index: 10;
+      font-family: 'Inter', Arial, sans-serif;
+    }
+
+    #loginOverlay .login-box {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 16px;
+      background: var(--panel);
+      padding: 28px 32px 24px;
+      border: 3px solid var(--ink);
+      box-shadow: 6px 6px 0 var(--ink);
+      min-width: 300px;
+    }
+
+    #loginOverlay .login-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 14px;
+      color: var(--slime);
+      text-align: center;
+      letter-spacing: 1px;
+      text-shadow: 2px 2px 0 var(--ink);
+      margin: 0 0 4px;
+    }
+
+    #loginOverlay .login-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #loginOverlay label {
+      color: var(--muted);
+      font-family: 'Inter', Arial, sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    #usernameInput {
+      font-family: 'Inter', Arial, sans-serif;
+      font-size: 16px;
+      font-weight: 600;
+      padding: 10px 12px;
+      width: 200px;
+      color: var(--ink);
+      background: var(--cream);
+      border: 2px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+      outline: none;
+    }
+    #usernameInput:focus {
+      border-color: var(--slime);
+      box-shadow: 3px 3px 0 var(--slime-dark);
+    }
+    #usernameInput::placeholder {
+      color: #7a8a7d;
+      font-weight: 400;
+    }
+
+    /* Pixel/arcade button: hard offset shadow that collapses on press,
+       giving a tactile "pushed in" feel instead of a flat modern hover. */
+    .pixel-btn {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 13px;
+      color: var(--ink);
+      background: var(--gold);
+      border: 2px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+      padding: 12px 18px;
+      cursor: pointer;
+      transition: transform 0.05s ease, box-shadow 0.05s ease, background 0.15s ease;
+    }
+    .pixel-btn:hover {
+      background: #ffd370;
+    }
+    .pixel-btn:active {
+      transform: translate(3px, 3px);
+      box-shadow: 0 0 0 var(--ink);
+    }
+    .pixel-btn:focus-visible {
+      outline: 3px solid var(--slime);
+      outline-offset: 2px;
+    }
+
+    .pixel-btn-small {
+      font-size: 11px;
+      padding: 8px 12px;
+      box-shadow: 3px 3px 0 var(--ink);
+    }
+
+    #twitchControls {
+      position: absolute;
+      top: 60px; /* below #connectionStatus, which also sits top-right */
+      right: 14px;
+      z-index: 20;
+    }
+
+    #usernameColor {
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      border: 2px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+      cursor: pointer;
+      background: var(--panel-light);
+    }
+    /* Strip the native inset look so our own pixel border reads cleanly. */
+    #usernameColor::-webkit-color-swatch-wrapper { padding: 3px; }
+    #usernameColor::-webkit-color-swatch { border: none; }
+    #usernameColor::-moz-color-swatch { border: none; }
+
+    #loginOverlay .hint {
+      font-family: 'Inter', Arial, sans-serif;
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+      margin-top: 2px;
+    }
+    #loginOverlay .hint kbd {
+      font-family: 'Inter', Arial, sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--ink);
+      background: var(--slime);
+      border: 1px solid var(--ink);
+      border-radius: 3px;
+      padding: 1px 5px;
+      margin: 0 1px;
+    }
+
+    #connectionStatus {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      padding: 8px 14px;
+      background: var(--panel);
+      color: var(--cream);
+      font-family: 'Press Start 2P', monospace;
+      font-size: 10px;
+      letter-spacing: 0.5px;
+      border: 2px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+      z-index: 20;
+    }
+
+    #editorTestBadge {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      display: none;
+      padding: 9px 12px;
+      background: var(--gold);
+      color: var(--ink);
+      font-family: 'Press Start 2P', monospace;
+      font-size: 9px;
+      border: 2px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+      z-index: 40;
+      line-height: 1.5;
+    }
+
+    /* ---- Chat input bubble: only YOU see this, while typing. The sent
+       message everyone sees is drawn on the canvas as a pixel speech
+       bubble (see drawChatBubble in the script). Follows the player each
+       frame via positionChatInput(). ---- */
+    #chatInputWrap {
+      position: absolute;
+      display: none;
+      z-index: 15;
+      transform: translate(-50%, -100%);
+    }
+    #chatInput {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 10px;
+      color: var(--ink);
+      background: var(--cream);
+      border: 2px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+      padding: 9px 10px;
+      width: 220px;
+      outline: none;
+    }
+    #chatInput:focus {
+      border-color: var(--slime-dark);
+    }
+    #chatInput::placeholder {
+      color: #7a8a7d;
+    }
+
+    /* ---- "Say in Twitch chat?" toggle: sits above the chat input, same
+       pixel language as everything else (hard border, offset shadow,
+       slime/gold palette). When ON, a sent message is ALSO relayed to the
+       real Twitch channel chat via the server's StreamElements bot. ---- */
+    #twitchToggleRow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 8px;
+      color: var(--cream);
+      user-select: none;
+    }
+    #twitchToggleRow .tt-label {
+      background: var(--panel);
+      border: 2px solid var(--ink);
+      box-shadow: 2px 2px 0 var(--ink);
+      padding: 5px 7px;
+      letter-spacing: 0.5px;
+    }
+    #twitchToggle {
+      width: 34px;
+      height: 18px;
+      border: 2px solid var(--ink);
+      box-shadow: 2px 2px 0 var(--ink);
+      background: var(--panel-light);
+      cursor: pointer;
+      position: relative;
+      flex: none;
+    }
+    #twitchToggle .knob {
+      position: absolute;
+      top: 1px;
+      left: 1px;
+      width: 14px;
+      height: 14px;
+      background: var(--muted);
+      transition: left 0.08s steps(2), background 0.08s;
+    }
+    #twitchToggle.on {
+      background: var(--slime-dark);
+    }
+    #twitchToggle.on .knob {
+      left: 17px;
+      background: var(--gold);
+    }
+    #twitchToggle:focus-visible {
+      outline: 3px solid var(--slime);
+      outline-offset: 2px;
+    }
+
+    /* Pixel-step tail pointing down at your character. Two stacked squares
+       instead of a smooth CSS triangle, to keep the retro blocky look. */
+    #chatInputWrap::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      bottom: -10px;
+      width: 10px;
+      height: 10px;
+      transform: translateX(-50%);
+      background: var(--cream);
+      border: 2px solid var(--ink);
+      border-top: none;
+      box-shadow: 3px 3px 0 var(--ink);
+    }
+
+    /* Shown on <body> while #twitchControls has handed clicks/keys to the
+       Twitch player, so it's obvious the game itself is temporarily not
+       receiving input. */
+    body.stream-interactive::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      border: 4px solid var(--gold);
+      box-shadow: inset 0 0 24px rgba(255, 193, 69, 0.5);
+      pointer-events: none;
+      z-index: 25;
+    }
+
+    /* ---- Slime shop (press P) ---- */
+    #shopOverlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 16, 11, 0.78);
+      z-index: 30;
+      font-family: 'Inter', Arial, sans-serif;
+    }
+    #shopOverlay .shop-box {
+      background: var(--panel);
+      border: 3px solid var(--ink);
+      box-shadow: 8px 8px 0 var(--ink);
+      padding: 20px 22px 22px;
+      width: min(760px, 92vw);
+      max-height: 88vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .shop-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 6px;
+    }
+    .shop-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 16px;
+      color: var(--slime);
+      text-shadow: 2px 2px 0 var(--ink);
+    }
+    .shop-coins {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 11px;
+      color: var(--cream);
+      background: var(--panel-light);
+      border: 2px solid var(--ink);
+      box-shadow: 2px 2px 0 var(--ink);
+      padding: 8px 10px;
+    }
+    .shop-coins b { color: var(--gold); }
+    .shop-header #shopClose { margin-left: auto; }
+    .shop-sub { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+    #shopMsg { color: var(--gold); font-size: 12px; min-height: 14px; margin: 0 0 10px; font-weight: 600; }
+    .shop-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+      padding: 4px;
+    }
+    .shop-section {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 11px;
+      color: var(--gold);
+      letter-spacing: 0.5px;
+      padding: 6px 2px 2px;
+      border-bottom: 2px solid var(--panel-lighter);
+    }
+    .shop-grid-inner {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 12px;
+    }
+    .shop-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 34px;
+      color: var(--slime);
+      background: var(--panel);
+    }
+    .shop-lvl {
+      font-size: 10px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .shop-card {
+      background: var(--panel-light);
+      border: 2px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+      padding: 10px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .shop-card.is-equipped { border-color: var(--slime); box-shadow: 3px 3px 0 var(--slime-dark); }
+    /* Show only the first (front-facing idle) 64x64 frame of the sheet,
+       scaled up crisp — 72/64 = 1.125, so the whole 384x256 sheet scales to
+       432x288 and the top-left frame fills the 72x72 box. */
+    .shop-preview {
+      width: 72px;
+      height: 72px;
+      background-repeat: no-repeat;
+      background-position: 0 0;
+      background-size: 432px 288px;
+      image-rendering: pixelated;
+      background-color: var(--panel);
+      border: 2px solid var(--ink);
+    }
+    .shop-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--cream);
+      text-align: center;
+    }
+    .shop-btn {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 9px;
+      color: var(--ink);
+      background: var(--gold);
+      border: 2px solid var(--ink);
+      box-shadow: 2px 2px 0 var(--ink);
+      padding: 8px 6px;
+      width: 100%;
+      cursor: pointer;
+    }
+    .shop-btn:hover { background: #ffd370; }
+    .shop-btn:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--ink); }
+    .shop-btn.equip { background: var(--slime); }
+    .shop-btn.equip:hover { background: #9be870; }
+    .shop-btn.equipped { background: var(--panel); color: var(--slime); cursor: default; }
+    .shop-btn.equipped:active { transform: none; box-shadow: 2px 2px 0 var(--ink); }
+    .shop-btn.disabled { background: #4a5a4d; color: #8aa08d; cursor: not-allowed; }
+    .shop-btn.disabled:active { transform: none; box-shadow: 2px 2px 0 var(--ink); }
