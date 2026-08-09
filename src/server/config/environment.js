@@ -15,6 +15,19 @@ const IS_PRODUCTION = NODE_ENV === 'production';
 const PLAYER_STATE_SECRET = String(process.env.PLAYER_STATE_SECRET || '');
 const PERSISTENCE_ENABLED = PLAYER_STATE_SECRET.length >= 32;
 
+// ---- Supabase (accounts + durable player-state database) --------------------
+// Logged-in players get their progression stored in a Supabase table instead of
+// (only) a signed cookie. The SERVICE-ROLE key stays on the server and bypasses
+// RLS to read/write any player's row — it must NEVER reach the browser. The
+// ANON key and URL are public and are handed to the client via /config so it
+// can run Supabase Auth (sign up / sign in) itself. If URL or service-role key
+// are missing, account persistence is disabled and the game falls back to the
+// existing signed-cookie / guest flow with no errors.
+const SUPABASE_URL = String(process.env.SUPABASE_URL || '');
+const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || '');
+const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+const SUPABASE_ENABLED = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+
 // Two people can run this game over their own stream: eberhex and izu_kora.
 // A SINGLE env var, isEberhex, flips EVERYTHING to the right host at once (see
 // config/hosts.js). Render env vars are always strings, so "true" (any
@@ -40,6 +53,10 @@ module.exports = {
   IS_PRODUCTION,
   PLAYER_STATE_SECRET,
   PERSISTENCE_ENABLED,
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
+  SUPABASE_SERVICE_ROLE_KEY,
+  SUPABASE_ENABLED,
   IS_EBERHEX,
   SE_CREDENTIALS,
 };

@@ -44,6 +44,26 @@
     <div class="login-box">
       <p class="login-title">JOIN THE GAME</p>
       <p id="loginMessage" class="hint" style="display:none; color: var(--gold); margin: 0;"></p>
+
+      <!-- Optional account login. Sign in to save coins, cosmetics and upgrades
+           to your account (across devices); or skip it and play as a guest,
+           where progress is kept in this browser only. Hidden automatically if
+           Supabase is not configured on the server. -->
+      <div id="authPanel">
+        <p class="auth-lead">Sign in to save your progress across devices — or just pick a username below to play as a guest.</p>
+        <p id="authStatus" class="auth-status" style="display:none;"></p>
+        <div id="authFormRow" class="auth-form-row">
+          <input id="authEmail" type="email" placeholder="Email" autocomplete="email" />
+          <input id="authPassword" type="password" placeholder="Password" autocomplete="current-password" />
+        </div>
+        <div class="auth-btn-row">
+          <button id="authSignIn" class="pixel-btn pixel-btn-small">SIGN IN</button>
+          <button id="authSignUp" class="pixel-btn pixel-btn-small">SIGN UP</button>
+          <button id="authSignOut" class="pixel-btn pixel-btn-small" style="display:none;">SIGN OUT</button>
+        </div>
+        <p id="authMsg" class="hint" style="margin:0;"></p>
+      </div>
+
       <div class="login-row">
         <input id="usernameInput" type="text" placeholder="Username" maxlength="20" />
         <input id="usernameColor" type="color" value="#1e3fff" title="Name color" />
@@ -82,6 +102,10 @@
   </div>
 
   <script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
+  <!-- Supabase JS (accounts / login). Loaded before the game modules so
+       auth.js can use it. If this CDN is blocked the login panel hides and the
+       game falls back to guest play. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
   <!--
     Player client, split into scope-sharing modules loaded IN ORDER. These are
@@ -93,6 +117,7 @@
   <script src="/js/game/editorTestSocket.js"></script>
   <script src="/js/game/twitch.js"></script>
   <script src="/js/game/socket.js"></script>
+  <script src="/js/game/auth.js"></script>
   <script src="/js/game/camera.js"></script>
   <script src="/js/game/movement.js"></script>
   <script src="/js/game/effects.js"></script>

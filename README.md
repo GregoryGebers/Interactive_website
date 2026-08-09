@@ -60,10 +60,42 @@ secrets.**
 |---|---|
 | `PORT` | HTTP port (default `3000`). |
 | `NODE_ENV` | `production` enables the `Secure` cookie flag. |
-| `PLAYER_STATE_SECRET` | HMAC secret for the signed player-state cookie. **≥ 32 chars.** If unset, persistence is disabled (progression won't survive refresh). |
+| `PLAYER_STATE_SECRET` | HMAC secret for the signed player-state cookie (guest persistence). **≥ 32 chars.** If unset, guest persistence is disabled (progression won't survive refresh). |
+| `SUPABASE_URL` | Your Supabase project URL (e.g. `https://xxxx.supabase.co`). Enables accounts + DB-backed progression. |
+| `SUPABASE_ANON_KEY` | Supabase **anon** (public) key. Sent to the browser via `/config` for Supabase Auth. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase **service-role** key. Server-only — reads/writes player rows and bypasses RLS. **Never expose to the browser.** If this or `SUPABASE_URL` is unset, accounts are disabled and the game uses the guest/cookie flow. |
 | `isEberhex` | `"true"` selects the `eberhex` host; anything else selects `izu_kora`. Switches Twitch channel + StreamElements bot together. |
 | `SE_JWT_TOKEN_EBERHEX` / `SE_CHANNEL_ID_EBERHEX` | StreamElements bot creds for eberhex. |
 | `SE_JWT_TOKEN_IZU` / `SE_CHANNEL_ID_IZU` | StreamElements bot creds for izu_kora. |
+
+## Accounts & saved progress (Supabase)
+
+Players can optionally **sign in** (email + password) to save coins, cosmetics
+and upgrades to their account so progress follows them across devices. Not
+signing in still works — that's a **guest** session persisted in a signed
+HttpOnly cookie in the current browser (the original behavior).
+
+The server stays **authoritative**: the browser never writes coins/upgrades to
+the database. It only authenticates with Supabase and passes its access token on
+the socket handshake; the server verifies the token (service-role key) and is
+the only writer to the `player_state` table. Row Level Security lets a signed-in
+player *read* only their own row and blocks all direct client writes.
+
+**One-time setup:**
+
+1. Create a Supabase project (already done — it just has no tables yet).
+2. In the Supabase Dashboard → **SQL Editor**, paste and run
+   [`db/supabase_schema.sql`](db/supabase_schema.sql). This creates the
+   `player_state` table, its RLS policies, and the `updated_at` trigger.
+3. In **Project Settings → API**, copy the **Project URL**, **anon** key, and
+   **service_role** key into the three `SUPABASE_*` environment variables (see
+   the table above; `.env.example` has a template). On Render, add them as
+   environment variables.
+4. (Optional) In **Authentication → Providers → Email**, turn *"Confirm email"*
+   off for frictionless sign-up, or leave it on to require email confirmation.
+
+If the `SUPABASE_*` vars are absent, the login panel hides itself and the game
+runs exactly as before on the guest/cookie path.
 
 ## Configuration files
 

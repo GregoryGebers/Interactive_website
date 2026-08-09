@@ -121,6 +121,57 @@
       font-weight: 400;
     }
 
+    /* ---- Account login panel (optional Supabase auth) ---------------------- */
+    #authPanel {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 14px 14px 12px;
+      border: 2px dashed var(--ink);
+      background: rgba(0, 0, 0, 0.12);
+    }
+    #authPanel .auth-lead {
+      font-family: 'Inter', Arial, sans-serif;
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+      margin: 0;
+    }
+    #authPanel .auth-status {
+      font-family: 'Inter', Arial, sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--gold);
+      text-align: center;
+      margin: 0;
+    }
+    #authPanel .auth-form-row {
+      display: flex;
+      gap: 8px;
+    }
+    #authPanel .auth-form-row input {
+      flex: 1;
+      min-width: 0;
+      font-family: 'Inter', Arial, sans-serif;
+      font-size: 14px;
+      padding: 9px 10px;
+      color: var(--ink);
+      background: var(--cream);
+      border: 2px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--ink);
+      outline: none;
+    }
+    #authPanel .auth-form-row input:focus {
+      border-color: var(--slime);
+      box-shadow: 3px 3px 0 var(--slime-dark);
+    }
+    #authPanel .auth-btn-row {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
     /* Pixel/arcade button: hard offset shadow that collapses on press,
        giving a tactile "pushed in" feel instead of a flat modern hover. */
     .pixel-btn {

@@ -4,7 +4,8 @@ const gameState = require('../state/gameState');
 const { AFK_TIMEOUT_MS, AFK_SWEEP_INTERVAL_MS } = require('../config/gameConfig');
 const { pickRandomCoin } = require('../services/scene.service');
 const { readPersistentCookie } = require('../utils/crypto');
-const { normalizePersistentState } = require('../services/playerState.service');
+const { normalizePersistentState, pushPersistentState } = require('../services/playerState.service');
+const { verifyAccessToken, loadPlayerState } = require('../services/supabase.service');
 
 const { registerPlayerHandlers } = require('./player.handlers');
 const { registerMovementHandlers } = require('./movement.handlers');
@@ -60,11 +61,14 @@ function registerSocketHandlers(io) {
 
     // Load the signed save carried by this browser. A recovered Socket.IO
     // connection keeps socket.data; a fresh connection gets the latest HttpOnly
-    // cookie from the handshake headers.
+    // cookie from the handshake headers. This is the guest/fallback state; if
+    // this socket is authenticated, the async block below upgrades it to the DB
+    // row before the player clicks GO (join happens only from the login screen).
     const cookieState = readPersistentCookie(
       socket.handshake && socket.handshake.headers && socket.handshake.headers.cookie
     );
     socket.data.persistentState = normalizePersistentState(cookieState);
+    socket.data.userId = null;
 
     // Cancel any pending removal for this id — they're back.
     if (gameState.pendingRemoval[socket.id]) {
@@ -74,7 +78,9 @@ function registerSocketHandlers(io) {
 
     // Every connection gets the current world state, but does NOT become a
     // player just by connecting. overlay.html connects purely to watch (it
-    // never sends "join"), so it should never spawn a character.
+    // never sends "join"), so it should never spawn a character. Handlers are
+    // registered SYNCHRONOUSLY here so no early event (e.g. a fast "join") is
+    // lost while the async auth lookup below is still in flight.
     socket.emit('init', gameState.players);
     socket.emit('coin', gameState.currentCoin);
 
@@ -85,6 +91,39 @@ function registerSocketHandlers(io) {
     registerChatHandlers(socket, context);
     registerCombatHandlers(socket, context);
     registerEffectsHandlers(socket, context);
+
+    // If the browser handed us a Supabase access token, this connection belongs
+    // to a real account: verify it, remember the user id, and prefer the row
+    // stored in the database over the cookie. Done asynchronously (not blocking
+    // handler registration). If the player has already joined by the time this
+    // resolves, re-push so the authoritative DB balance/cosmetics take effect.
+    const authToken = socket.handshake && socket.handshake.auth && socket.handshake.auth.token;
+    if (authToken) {
+      (async () => {
+        try {
+          const user = await verifyAccessToken(authToken);
+          if (!user) {
+            console.log(`[auth] ${socket.id} presented an invalid/expired token; treating as guest`);
+            return;
+          }
+          socket.data.userId = user.id;
+          const dbState = await loadPlayerState(user.id);
+          if (dbState) socket.data.persistentState = normalizePersistentState(dbState);
+          console.log(`[auth] ${socket.id} authenticated as ${user.id}`);
+          if (gameState.players[socket.id]) {
+            // Already joined as a guest before auth resolved — re-apply the
+            // account's saved progression now.
+            const owned = new Set(socket.data.persistentState.cosmetics);
+            gameState.playerCosmetics[socket.id] = owned;
+            gameState.playerUpgrades[socket.id] = { ...socket.data.persistentState.upgrades };
+            gameState.players[socket.id].score = socket.data.persistentState.coins;
+            pushPersistentState(socket, { bumpRevision: false });
+          }
+        } catch (err) {
+          console.error(`[auth] token verification failed for ${socket.id}:`, err);
+        }
+      })();
+    }
   });
 
   startAfkSweep(io);

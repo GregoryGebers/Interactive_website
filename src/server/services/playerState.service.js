@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const { PLAYER_STATE_MAX_AGE_SEC } = require('../config/gameConfig');
 const { signStateToken } = require('../utils/crypto');
 const { loadShopConfig, DEFAULT_COSMETIC_ITEMS } = require('./shop.service');
+const { savePlayerState } = require('./supabase.service');
 const gameState = require('../state/gameState');
 
 function freshUpgradeState() {
@@ -123,6 +124,15 @@ function pushPersistentState(socket, { bumpRevision = true } = {}) {
 
   const token = signStateToken(state);
   if (token) socket.emit('persist_state', { token, rev: state.rev });
+
+  // Logged-in players are persisted to the database (server-authoritative — the
+  // browser never writes these values itself). Fire-and-forget: a slow or
+  // failing write must not block gameplay, and savePlayerState never throws.
+  if (socket.data && socket.data.userId) {
+    savePlayerState(socket.data.userId, state).catch((err) => {
+      console.error('[player-state] async DB save failed:', err);
+    });
+  }
 }
 
 module.exports = {

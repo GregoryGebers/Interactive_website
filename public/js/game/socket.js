@@ -8,6 +8,13 @@
       ? 'https://interactive-website-9620.onrender.com'
       : window.location.origin;
 
+    // Supabase access token for a logged-in player. `auth.js` (loaded later)
+    // updates this and reconnects the socket after sign-in/out. Using a
+    // function for `auth` means the CURRENT token is read fresh on every
+    // (re)connect handshake, so a token that arrives after the first guest
+    // connect is picked up as soon as auth.js reconnects the socket.
+    window.__slimeAuthToken = window.__slimeAuthToken || null;
+
     const socket = IS_EDITOR_TEST
       ? createEditorTestSocket(EDITOR_TEST_PAYLOAD)
       : io(GAME_SERVER_ORIGIN, {
@@ -17,6 +24,7 @@
           reconnectionDelayMax: 10000, // tolerate a slow Render cold-start
           timeout: 30000,
           withCredentials: !LOCAL_SCENE_EDITOR,
+          auth: (cb) => cb({ token: window.__slimeAuthToken || null }),
         });
 
     const connectionStatus = document.getElementById('connectionStatus');
