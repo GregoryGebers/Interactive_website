@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const crypto = require('crypto');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -33,6 +34,9 @@ const io = new Server(server, {
   maxHttpBufferSize: 1e5, // 100 KB
 });
 
+// Small JSON bodies are used only for the signed-cookie persistence bridge.
+app.use(express.json({ limit: '16kb' }));
+
 // Serve static files from the 'public' directory
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -41,6 +45,136 @@ app.use(express.static(path.join(__dirname, 'public')));
 // the asset-listing and scene-writing endpoints are never exposed online.
 // This server only READS scene.json (for coin spawns, below) — it never lets
 // a remote client modify the level.
+
+
+// ---- Signed persistent player state ----------------------------------------
+// No database is required: the player's durable progression lives in a signed,
+// HttpOnly cookie. The signature prevents the browser from editing coins,
+// upgrades or cosmetic ownership and then presenting the modified state as
+// legitimate.
+//
+// IMPORTANT: set PLAYER_STATE_SECRET on Render to a long random value and NEVER
+// expose it to the browser. If it is missing, persistence is deliberately
+// disabled rather than silently using an unstable secret that changes on
+// every deploy.
+const PLAYER_STATE_COOKIE = 'slime_player_state';
+const PLAYER_STATE_MAX_AGE_SEC = 60 * 60 * 24 * 365; // 1 year
+const PLAYER_STATE_SECRET = String(process.env.PLAYER_STATE_SECRET || '');
+const PERSISTENCE_ENABLED = PLAYER_STATE_SECRET.length >= 32;
+
+if (!PERSISTENCE_ENABLED) {
+  console.warn(
+    '[player-state] PLAYER_STATE_SECRET is missing/too short; persistent cookies are DISABLED. ' +
+    'Set a random secret of at least 32 characters on Render.'
+  );
+}
+
+function base64urlJson(obj) {
+  return Buffer.from(JSON.stringify(obj), 'utf8').toString('base64url');
+}
+
+function signPayload(payloadB64) {
+  return crypto.createHmac('sha256', PLAYER_STATE_SECRET).update(payloadB64).digest('base64url');
+}
+
+function signStateToken(state) {
+  if (!PERSISTENCE_ENABLED) return null;
+  const payload = base64urlJson(state);
+  return `${payload}.${signPayload(payload)}`;
+}
+
+function safeTimingEqual(a, b) {
+  try {
+    const aa = Buffer.from(String(a));
+    const bb = Buffer.from(String(b));
+    return aa.length === bb.length && crypto.timingSafeEqual(aa, bb);
+  } catch (_) {
+    return false;
+  }
+}
+
+function verifyStateToken(token) {
+  if (!PERSISTENCE_ENABLED || typeof token !== 'string') return null;
+  const dot = token.lastIndexOf('.');
+  if (dot <= 0) return null;
+  const payload = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  if (!safeTimingEqual(sig, signPayload(payload))) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (Number(parsed.exp) && Date.now() > Number(parsed.exp)) return null;
+    return parsed;
+  } catch (_) {
+    return null;
+  }
+}
+
+function parseCookies(header) {
+  const out = {};
+  for (const part of String(header || '').split(';')) {
+    const i = part.indexOf('=');
+    if (i <= 0) continue;
+    const key = part.slice(0, i).trim();
+    const value = part.slice(i + 1).trim();
+    if (!key) continue;
+    try { out[key] = decodeURIComponent(value); }
+    catch (_) { out[key] = value; }
+  }
+  return out;
+}
+
+function readPersistentCookie(cookieHeader) {
+  const token = parseCookies(cookieHeader)[PLAYER_STATE_COOKIE];
+  return verifyStateToken(token);
+}
+
+function setPersistentCookie(req, res, token) {
+  if (!token) return;
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const secure = req.secure || forwardedProto === 'https' || process.env.NODE_ENV === 'production';
+  const parts = [
+    `${PLAYER_STATE_COOKIE}=${encodeURIComponent(token)}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    `Max-Age=${PLAYER_STATE_MAX_AGE_SEC}`,
+  ];
+  if (secure) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
+// Socket.IO cannot change browser cookies after the WebSocket handshake.
+// Instead the server emits a signed one-time state snapshot; viewer.html POSTs
+// that signed token here, and this HTTP response writes the HttpOnly cookie.
+// The endpoint NEVER trusts raw coins/upgrades from the client.
+app.post('/api/player-state', (req, res) => {
+  if (!PERSISTENCE_ENABLED) {
+    res.status(503).json({ ok: false, error: 'Persistence is not configured.' });
+    return;
+  }
+  const token = req.body && typeof req.body.token === 'string' ? req.body.token : '';
+  const incoming = verifyStateToken(token);
+  if (!incoming) {
+    res.status(400).json({ ok: false, error: 'Invalid signed player-state token.' });
+    return;
+  }
+
+  // Prevent normal network reordering from letting an older save overwrite a
+  // newer cookie. (Without a database, a determined user can still manually
+  // restore an old cookie backup; a signed-cookie-only design cannot prevent
+  // rollback attacks across browser backups.)
+  const current = readPersistentCookie(req.headers.cookie);
+  const incomingRev = Number(incoming.rev) || 0;
+  const currentRev = Number(current && current.rev) || 0;
+  if (current && current.playerId === incoming.playerId && incomingRev < currentRev) {
+    res.status(409).json({ ok: false, stale: true });
+    return;
+  }
+
+  setPersistentCookie(req, res, token);
+  res.json({ ok: true, rev: incomingRev });
+});
 
 // ---- Host selection --------------------------------------------------------
 // Two people can run this game over their own stream: eberhex and izu_kora.
@@ -437,8 +571,103 @@ function priceOf(item, tier, skinId) {
 // Upgrade ownership relevant to server-authoritative mechanics. Kept outside
 // the movement player object so sanitizeMoveData cannot accidentally erase it.
 const playerUpgrades = {};
+const playerCosmetics = {}; // socket.id -> Set of owned cosmetic ids
+
 function freshUpgradeState() {
   return { jump: 0, dash: 0, knockback: 0, health: 0, invisibility: 0, doubleJump: 0 };
+}
+
+function freshPersistentState() {
+  return {
+    v: 1,
+    playerId: crypto.randomUUID(),
+    rev: 0,
+    exp: Date.now() + PLAYER_STATE_MAX_AGE_SEC * 1000,
+    coins: 0,
+    cosmetics: ['classic'],
+    equippedSkin: 'classic',
+    upgrades: freshUpgradeState(),
+  };
+}
+
+function normalizePersistentState(raw) {
+  const base = freshPersistentState();
+  if (!raw || typeof raw !== 'object') return base;
+
+  if (typeof raw.playerId === 'string' && /^[A-Za-z0-9-]{8,80}$/.test(raw.playerId)) {
+    base.playerId = raw.playerId;
+  }
+  base.rev = Math.max(0, Math.floor(Number(raw.rev) || 0));
+  base.coins = Math.max(0, Math.floor(Number(raw.coins) || 0));
+
+  const allowedSkins = new Set(Object.keys(DEFAULT_COSMETIC_ITEMS));
+  const owned = new Set(['classic']);
+  if (Array.isArray(raw.cosmetics)) {
+    for (const id of raw.cosmetics) {
+      if (typeof id === 'string' && allowedSkins.has(id)) owned.add(id);
+    }
+  }
+  base.cosmetics = [...owned];
+
+  if (typeof raw.equippedSkin === 'string' && owned.has(raw.equippedSkin)) {
+    base.equippedSkin = raw.equippedSkin;
+  }
+
+  const cfg = loadShopConfig();
+  const incomingUp = raw.upgrades && typeof raw.upgrades === 'object' ? raw.upgrades : {};
+  for (const key of Object.keys(base.upgrades)) {
+    const maxTier = key === 'doubleJump'
+      ? 1
+      : Math.max(0, Number(cfg.upgrades[key] && cfg.upgrades[key].costs.length) || 0);
+    base.upgrades[key] = Math.max(0, Math.min(maxTier, Math.floor(Number(incomingUp[key]) || 0)));
+  }
+
+  // Disabled cosmetics remain owned so re-enabling them later restores access,
+  // but a currently disabled skin is not allowed to remain equipped.
+  const equippedCfg = cfg.cosmetics.items[base.equippedSkin];
+  if (base.equippedSkin !== 'classic' && (!equippedCfg || equippedCfg.enabled === false)) {
+    base.equippedSkin = 'classic';
+  }
+
+  base.exp = Date.now() + PLAYER_STATE_MAX_AGE_SEC * 1000;
+  return base;
+}
+
+function stateForSocket(socket) {
+  const player = players[socket.id];
+  if (!player) return socket.data.persistentState || freshPersistentState();
+
+  const previous = socket.data.persistentState || freshPersistentState();
+  return normalizePersistentState({
+    ...previous,
+    coins: Math.max(0, Math.floor(Number(player.score) || 0)),
+    cosmetics: [...(playerCosmetics[socket.id] || new Set(['classic']))],
+    equippedSkin: player.skin || 'classic',
+    upgrades: { ...(playerUpgrades[socket.id] || freshUpgradeState()) },
+  });
+}
+
+function publicPersistentState(state) {
+  return {
+    coins: state.coins,
+    cosmetics: [...state.cosmetics],
+    equippedSkin: state.equippedSkin,
+    upgrades: { ...state.upgrades },
+  };
+}
+
+function pushPersistentState(socket, { bumpRevision = true } = {}) {
+  if (!players[socket.id]) return;
+  let state = stateForSocket(socket);
+  if (bumpRevision) state.rev = (Number(state.rev) || 0) + 1;
+  state.exp = Date.now() + PLAYER_STATE_MAX_AGE_SEC * 1000;
+  socket.data.persistentState = state;
+
+  // Always update the live client, even when cookie persistence is disabled.
+  socket.emit('player_state', publicPersistentState(state));
+
+  const token = signStateToken(state);
+  if (token) socket.emit('persist_state', { token, rev: state.rev });
 }
 
 // Single source of truth for the current coin, so a new player joining just
@@ -479,11 +708,10 @@ function sanitizeMoveData(data, existingPlayer = null) {
     ? data.color
     : DEFAULT_USERNAME_COLOR;
 
-  // Skin, like score, is not something a movement packet should be able to
-  // wipe: keep the last known skin if this packet doesn't carry one.
-  const skin = typeof data.skin === 'string'
-    ? data.skin.slice(0, 40)
-    : (existingPlayer && existingPlayer.skin) || 'classic';
+  // Equipped skin is server-owned persistent state. Movement packets are not
+  // allowed to switch it, otherwise a modified client could equip cosmetics it
+  // never bought. Skin changes go through the `equip_skin` socket event.
+  const skin = (existingPlayer && existingPlayer.skin) || 'classic';
 
   // Score is owned by the server and is only changed in the coin_taken
   // handler. Some viewer.html move packets do not include score at all
@@ -555,6 +783,12 @@ const lastActivityAt = {};
 io.on('connection', (socket) => {
   console.log(`[connect] ${socket.id} recovered=${socket.recovered}`);
 
+  // Load the signed save carried by this browser. A recovered Socket.IO
+  // connection keeps socket.data, while a fresh connection gets the latest
+  // HttpOnly cookie from the handshake headers.
+  const cookieState = readPersistentCookie(socket.handshake && socket.handshake.headers && socket.handshake.headers.cookie);
+  socket.data.persistentState = normalizePersistentState(cookieState);
+
   // Cancel any pending removal for this id — they're back.
   if (pendingRemoval[socket.id]) {
     clearTimeout(pendingRemoval[socket.id]);
@@ -571,7 +805,12 @@ io.on('connection', (socket) => {
 
   socket.on('join', (data) => {
     try {
-      if (players[socket.id]) return; // already joined (e.g. a recovered reconnect)
+      if (players[socket.id]) {
+        // Recovered connection: resend the authoritative state in case the
+        // browser page recreated its local UI while the socket survived.
+        pushPersistentState(socket, { bumpRevision: false });
+        return;
+      }
 
       const username = data && typeof data.username === 'string'
         ? data.username.slice(0, MAX_USERNAME_LENGTH)
@@ -580,14 +819,29 @@ io.on('connection', (socket) => {
         ? data.color
         : DEFAULT_USERNAME_COLOR;
 
-      // Cosmetic skin id (which slime sprite this player wears). Just a short
-      // string the clients map to sprite sheets; capped so it can't be abused.
-      const skin = data && typeof data.skin === 'string' ? data.skin.slice(0, 40) : 'classic';
+      const saved = normalizePersistentState(socket.data.persistentState);
+      const owned = new Set(saved.cosmetics);
+      let skin = owned.has(saved.equippedSkin) ? saved.equippedSkin : 'classic';
 
-      players[socket.id] = { x: 100, y: 100, emote: 'idle', score: 0, username, color, skin };
-      playerUpgrades[socket.id] = freshUpgradeState();
+      // If a designer disabled a cosmetic after this player bought it, keep
+      // ownership in the cookie but temporarily fall back to Classic.
+      const shopCfg = loadShopConfig();
+      if (skin !== 'classic' && (!shopCfg.cosmetics.items[skin] || shopCfg.cosmetics.items[skin].enabled === false)) {
+        skin = 'classic';
+      }
+
+      players[socket.id] = {
+        x: 100, y: 100, emote: 'idle',
+        score: saved.coins,
+        username, color, skin
+      };
+      playerUpgrades[socket.id] = { ...saved.upgrades };
+      playerCosmetics[socket.id] = owned;
+      socket.data.persistentState = { ...saved, equippedSkin: skin };
+
       lastActivityAt[socket.id] = Date.now(); // joining counts as activity
       socket.broadcast.emit('new-player', { id: socket.id, ...players[socket.id] });
+      pushPersistentState(socket, { bumpRevision: false });
     } catch (err) {
       console.error(`[join] error from ${socket.id}:`, err);
     }
@@ -610,6 +864,7 @@ io.on('connection', (socket) => {
       // Immediately broadcast the updated score so overlay.html does not wait
       // for the next movement packet before showing the new value.
       io.emit('player-move', { id: socket.id, ...taker });
+      pushPersistentState(socket); // coins survive refresh/reconnect/server restart
 
       setTimeout(() => {
         currentCoin = pickRandomCoin();
@@ -649,9 +904,17 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // Upgrades must be purchased in order. This matters especially for
-      // knockback because the server itself uses this tier during hit checks.
-      if (item !== 'skin') {
+      if (item === 'skin') {
+        const owned = playerCosmetics[socket.id] || (playerCosmetics[socket.id] = new Set(['classic']));
+        if (owned.has(skinId)) {
+          socket.emit('buy_result', { ok: false, score, item, tier, skinId, reason: 'owned' });
+          return;
+        }
+        owned.add(skinId);
+        buyer.skin = skinId; // a newly purchased cosmetic auto-equips
+      } else {
+        // Upgrades must be purchased in order. This matters especially for
+        // knockback because the server itself uses this tier during hit checks.
         const state = playerUpgrades[socket.id] || (playerUpgrades[socket.id] = freshUpgradeState());
         const requestedTier = Number(tier);
         const currentTier = Number(state[item]) || 0;
@@ -665,12 +928,36 @@ io.on('connection', (socket) => {
       buyer.score = score - price;
       lastActivityAt[socket.id] = Date.now(); // buying counts as activity
 
-      // Echo item/tier so the client knows exactly what it just paid for, and
-      // broadcast the reduced score to everyone else (overlay + other clients).
       socket.emit('buy_result', { ok: true, score: buyer.score, item, tier, skinId });
-      socket.broadcast.emit('player-move', { id: socket.id, ...buyer });
+      io.emit('player-move', { id: socket.id, ...buyer });
+      pushPersistentState(socket); // persist balance + ownership/tier immediately
     } catch (err) {
       console.error(`[buy] error from ${socket.id}:`, err);
+    }
+  });
+
+  // Equipping is server-authoritative too: the browser can request an owned
+  // skin, but it cannot simply put an arbitrary skin id in a movement packet.
+  socket.on('equip_skin', (data) => {
+    try {
+      const player = players[socket.id];
+      if (!player) return;
+      const skinId = data && typeof data.skinId === 'string' ? data.skinId : '';
+      const owned = playerCosmetics[socket.id] || new Set(['classic']);
+      const cfg = loadShopConfig();
+      const skinCfg = cfg.cosmetics.items[skinId];
+
+      if (!owned.has(skinId) || !skinCfg || (skinId !== 'classic' && skinCfg.enabled === false)) {
+        socket.emit('equip_result', { ok: false, skinId, reason: 'invalid' });
+        return;
+      }
+
+      player.skin = skinId;
+      socket.emit('equip_result', { ok: true, skinId });
+      io.emit('player-move', { id: socket.id, ...player });
+      pushPersistentState(socket);
+    } catch (err) {
+      console.error(`[equip_skin] error from ${socket.id}:`, err);
     }
   });
 
@@ -823,6 +1110,7 @@ io.on('connection', (socket) => {
     pendingRemoval[socket.id] = setTimeout(() => {
       delete players[socket.id];
       delete playerUpgrades[socket.id];
+      delete playerCosmetics[socket.id];
       delete lastActivityAt[socket.id];
       delete pendingRemoval[socket.id];
       io.emit('remove-player', socket.id);
@@ -847,6 +1135,7 @@ setInterval(() => {
     if (now - last > AFK_TIMEOUT_MS) {
       delete players[id];
       delete playerUpgrades[id];
+      delete playerCosmetics[id];
       delete lastActivityAt[id];
       delete lastMoveAt[id];
       delete lastChatAt[id];
