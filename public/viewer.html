@@ -909,6 +909,231 @@
       isDashing = false;
     }
 
+
+    // ---- Game-feel / juice effects ----------------------------------------
+    // Viewer-only feedback. Nothing in this block is sent to overlay.html, so
+    // the OBS/stream view remains stable while each player gets responsive
+    // local camera and sprite feedback.
+    const fxParticles = [];
+    const fxRings = [];
+    const dashAfterimages = [];
+    const cameraShakes = [];
+    let coinPickupFx = null;
+    let hudCoinPulseUntil = 0;
+    let localHitFlashUntil = 0;
+    let localHitSquashUntil = 0;
+    let landingSquashStartedAt = 0;
+    let jumpStretchStartedAt = 0;
+    let hitStopTimer = 0;
+    let pendingKnockback = null;
+    let lastHitVisualAt = -Infinity;
+    let dashTrailAccumulator = 0;
+
+    const HIT_STOP_SEC = 0.065;
+    const BIG_LAND_MIN_SPEED = 360;
+    const BIG_LAND_MAX_SPEED = 760;
+
+    function rand(min, max) { return min + Math.random() * (max - min); }
+    function lerp(a, b, t) { return a + (b - a) * Math.max(0, Math.min(1, t)); }
+
+    function addCameraShake(strength, durationMs, dirX = 0, dirY = 0) {
+      const s = Math.max(0, Number(strength) || 0);
+      if (!s) return;
+      cameraShakes.push({
+        start: performance.now(),
+        duration: Math.max(1, Number(durationMs) || 1),
+        strength: s,
+        dirX: Math.max(-1, Math.min(1, Number(dirX) || 0)),
+        dirY: Math.max(-1, Math.min(1, Number(dirY) || 0)),
+        phase: Math.random() * Math.PI * 2,
+      });
+    }
+
+    function cameraShakeOffset(now = performance.now()) {
+      let x = 0, y = 0;
+      for (let i = cameraShakes.length - 1; i >= 0; i--) {
+        const s = cameraShakes[i];
+        const t = (now - s.start) / s.duration;
+        if (t >= 1) { cameraShakes.splice(i, 1); continue; }
+        const decay = 1 - Math.max(0, t);
+        const waveA = Math.sin(s.phase + t * Math.PI * 9);
+        const waveB = Math.cos(s.phase * 0.7 + t * Math.PI * 11);
+        // About 55% of the impulse follows the requested direction; the rest
+        // is a decaying oscillation so it reads as impact rather than a pan.
+        x += s.strength * decay * (s.dirX * 0.55 + waveA * 0.45);
+        y += s.strength * decay * (s.dirY * 0.55 + waveB * 0.45);
+      }
+      return { x, y };
+    }
+
+    function pushParticle(p) {
+      p.life = Number(p.life) || 0.2;
+      p.maxLife = p.life;
+      fxParticles.push(p);
+    }
+
+    function spawnDust(x, y, count = 4) {
+      for (let i = 0; i < count; i++) {
+        pushParticle({
+          type: 'square', x: x + rand(-7, 7), y: y + rand(-2, 2),
+          vx: rand(-42, 42), vy: rand(-62, -24), gravity: 115,
+          size: rand(2.5, 5), color: i % 2 ? '#d9e6cf' : '#a9c2ac', life: rand(0.18, 0.28),
+        });
+      }
+    }
+
+    function spawnImpactParticles(x, y, dir, tier = 0, maxTier = 3) {
+      const count = Math.round(lerp(3, 6, maxTier > 0 ? tier / maxTier : 0));
+      for (let i = 0; i < count; i++) {
+        pushParticle({
+          type: 'square', x: x + rand(-4, 4), y: y + rand(-6, 6),
+          // Fly mostly opposite the direction the victim is launched.
+          vx: -dir * rand(85, 155) + rand(-24, 24), vy: rand(-105, 45), gravity: 210,
+          size: rand(2.5, 5.5), color: i % 3 === 0 ? '#ffc145' : '#f3f7ee', life: rand(0.18, 0.3),
+        });
+      }
+    }
+
+    function spawnSpeedLines(dir) {
+      const baseX = player.x + player.width / 2 - dir * 18;
+      const baseY = player.y + player.height / 2;
+      for (let i = 0; i < 2; i++) {
+        pushParticle({
+          type: 'line', x: baseX + rand(-5, 5), y: baseY + rand(-15, 15),
+          vx: -dir * rand(120, 190), vy: rand(-8, 8), gravity: 0,
+          size: rand(9, 17), lineWidth: rand(1.5, 2.5), color: i ? '#7ed957' : '#f3f7ee', life: rand(0.1, 0.18), dir,
+        });
+      }
+    }
+
+    function spawnRing(x, y, startRadius, endRadius, life, color = '#f3f7ee', lineWidth = 2) {
+      fxRings.push({ x, y, startRadius, endRadius, life, maxLife: life, color, lineWidth });
+    }
+
+    function spawnAfterimage() {
+      dashAfterimages.push({
+        x: player.x, y: player.y, skin: player.skin, action: player.action,
+        frameIndex: animations.currentFrame, frameRow: animations.frameRow,
+        life: 0.16, maxLife: 0.16,
+      });
+      if (dashAfterimages.length > 12) dashAfterimages.shift();
+    }
+
+    function triggerJumpFx(doubleJump) {
+      jumpStretchStartedAt = performance.now();
+      if (doubleJump) {
+        spawnRing(player.x + player.width / 2, player.y + player.height + 4, 4, 30, 0.22, '#7ed957', 2);
+        for (let i = 0; i < 5; i++) {
+          pushParticle({ type:'square', x:player.x + 10 + rand(-10,10), y:player.y + 18 + rand(-2,4),
+            vx:rand(-36,36), vy:rand(18,55), gravity:20, size:rand(2,4), color:'#7ed957', life:rand(.15,.25) });
+        }
+      } else {
+        spawnDust(player.x + player.width / 2, player.y + player.height, 4);
+      }
+    }
+
+    function triggerDashFx() {
+      spawnAfterimage();
+      spawnSpeedLines(dashDir);
+      addCameraShake(1.5, 90, dashDir, 0);
+      dashTrailAccumulator = 0;
+    }
+
+    function triggerBigLanding(speed) {
+      const t = Math.max(0, Math.min(1, (speed - BIG_LAND_MIN_SPEED) / (BIG_LAND_MAX_SPEED - BIG_LAND_MIN_SPEED)));
+      addCameraShake(lerp(2, 4, t), 100, 0, 1);
+      spawnDust(player.x + 1, player.y + player.height, 3);
+      spawnDust(player.x + player.width - 1, player.y + player.height, 3);
+      landingSquashStartedAt = performance.now();
+    }
+
+    function triggerCoinPickupFx(x, y) {
+      coinPickupFx = { x, y, start: performance.now(), duration: 120 };
+      hudCoinPulseUntil = performance.now() + 190;
+      for (let i = 0; i < 4; i++) {
+        pushParticle({ type:'square', x:x + 10, y:y + 10, vx:rand(-70,70), vy:rand(-115,-45), gravity:250,
+          size:rand(2.5,4.5), color:'#ffc145', life:rand(.2,.32) });
+      }
+      // One tiny white sparkle gives the pickup a crisp final glint.
+      pushParticle({ type:'spark', x:x + 10, y:y + 6, vx:0, vy:-18, gravity:0, size:6, color:'#fff7cf', life:.16 });
+    }
+
+    function triggerHitVisuals(targetId, dir, tier, maxTier) {
+      const now = performance.now();
+      const isLocalTarget = targetId === socket.id;
+      const target = isLocalTarget ? player : otherPlayers[targetId];
+      if (!target) return;
+      const tx = (isLocalTarget ? target.x : (target.renderX ?? target.x)) + 10;
+      const ty = (isLocalTarget ? target.y : (target.renderY ?? target.y)) + 10;
+      const safeMax = Math.max(1, Number(maxTier) || 1);
+      const safeTier = Math.max(0, Math.min(safeMax, Number(tier) || 0));
+
+      spawnImpactParticles(tx, ty, dir, safeTier, safeMax);
+      if (isLocalTarget) localHitFlashUntil = now + 90;
+      else target.hitFlashUntil = now + 90;
+
+      if (safeTier >= safeMax) {
+        spawnRing(tx, ty, 7, 48, 0.28, '#ffc145', 3);
+        if (isLocalTarget) localHitSquashUntil = now + 80;
+        else target.hitSquashUntil = now + 80;
+      }
+    }
+
+    function localSpriteScale(now = performance.now()) {
+      if (now < localHitSquashUntil) return { x: 0.72, y: 1.18 };
+      const landAge = now - landingSquashStartedAt;
+      if (landingSquashStartedAt && landAge >= 0 && landAge < 180) {
+        if (landAge < 80) {
+          const t = landAge / 80;
+          return { x: lerp(1.15, 0.95, t), y: lerp(0.85, 1.05, t) };
+        }
+        const t = (landAge - 80) / 100;
+        return { x: lerp(0.95, 1, t), y: lerp(1.05, 1, t) };
+      }
+      const jumpAge = now - jumpStretchStartedAt;
+      if (jumpStretchStartedAt && jumpAge >= 0 && jumpAge < 80) {
+        const t = jumpAge / 80;
+        return { x: lerp(0.9, 1, t), y: lerp(1.1, 1, t) };
+      }
+      return { x: 1, y: 1 };
+    }
+
+    function updateVisualEffects(dt) {
+      const step = Math.max(0, Math.min(Number(dt) || 0, 0.05));
+      for (let i = fxParticles.length - 1; i >= 0; i--) {
+        const p = fxParticles[i];
+        p.life -= step;
+        if (p.life <= 0) { fxParticles.splice(i, 1); continue; }
+        p.vy += (p.gravity || 0) * step;
+        p.x += (p.vx || 0) * step;
+        p.y += (p.vy || 0) * step;
+      }
+      for (let i = fxRings.length - 1; i >= 0; i--) {
+        fxRings[i].life -= step;
+        if (fxRings[i].life <= 0) fxRings.splice(i, 1);
+      }
+      for (let i = dashAfterimages.length - 1; i >= 0; i--) {
+        dashAfterimages[i].life -= step;
+        if (dashAfterimages[i].life <= 0) dashAfterimages.splice(i, 1);
+      }
+      if (isDashing) {
+        dashTrailAccumulator += step;
+        if (dashTrailAccumulator >= 0.035) {
+          dashTrailAccumulator = 0;
+          spawnAfterimage();
+          spawnSpeedLines(dashDir);
+        }
+      }
+    }
+
+    function applyPendingKnockback() {
+      if (!pendingKnockback) return;
+      player.Xv = pendingKnockback.vx;
+      player.Yv = pendingKnockback.vy;
+      player.onGround = false;
+      pendingKnockback = null;
+    }
+
     // ---- Purchasable gameplay upgrades (reset every session; not persisted) --
     // Tier 0..3 for the tiered ones; doubleJump is a one-off unlock. The
     // server authorizes all purchases; knockback tier is ALSO tracked there
@@ -1379,6 +1604,7 @@
       canDash = false;
       player.Yv = 0;
       player.Xv = dashDir * dashSpeed();
+      triggerDashFx();
     }
 
     // ---- Other connected players, keyed by socket id ----
@@ -1601,24 +1827,56 @@
       p.swingDir = Number(data.dir) === -1 ? -1 : 1;
     });
 
-    // YOU got hit: the server computed the 45-degree launch velocity, and
-    // since each browser is authoritative over its own character, applying
-    // it here is what actually sends you flying (the normal move broadcasts
-    // then carry the new position to everyone else).
+    // Server-confirmed successful hit. All game viewers receive this so the
+    // struck slime can flash/emit particles. Only the two participants shake:
+    // the victim gets the stronger directional impact, the attacker gets a
+    // tiny confirmation kick. overlay.html intentionally ignores this event.
+    socket.on('player-hit', (data) => {
+      if (!data) return;
+      const dir = Number(data.dir) === -1 ? -1 : 1;
+      const tier = Math.max(0, Number(data.tier) || 0);
+      const maxTier = Math.max(1, Number(data.maxTier) || 1);
+      const targetId = String(data.targetId || '');
+      const attackerId = String(data.attackerId || '');
+
+      triggerHitVisuals(targetId, dir, tier, maxTier);
+      if (targetId === socket.id) {
+        const strength = lerp(4, 8, Math.min(1, tier / maxTier));
+        const duration = Math.round(lerp(120, 180, Math.min(1, tier / maxTier)));
+        addCameraShake(strength, duration, dir, -0.3);
+        lastHitVisualAt = performance.now();
+      }
+      if (attackerId === socket.id) {
+        addCameraShake(2.5, 80, dir, 0.15);
+      }
+    });
+
+    // YOU got hit. Hold the launch for a tiny hit-stop so the impact flash is
+    // readable, then apply the server-authoritative knockback velocity.
     socket.on('knockback', (data) => {
       if (!data) return;
       const vx = Number(data.vx);
       const vy = Number(data.vy);
       if (!Number.isFinite(vx) || !Number.isFinite(vy)) return;
-      player.Xv = vx;
-      player.Yv = vy;
-      player.onGround = false; // airborne now — gravity takes over
-      isDashing = false;       // a hit cancels any dash in progress
 
       const stunMs = Number(data.stunMs);
       const safeStunMs = Number.isFinite(stunMs) ? Math.max(0, Math.min(5000, stunMs)) : 500;
+      const tier = Math.max(0, Number(data.tier) || 0);
+      const maxTier = Math.max(1, Number(data.maxTier) || 1);
+      const dir = Number(data.dir) === -1 ? -1 : (vx < 0 ? -1 : 1);
+
+      // Compatibility fallback if this viewer is briefly paired with an older
+      // server that doesn't emit player-hit yet.
+      if (performance.now() - lastHitVisualAt > 120) {
+        triggerHitVisuals(socket.id, dir, tier, maxTier);
+        addCameraShake(lerp(4, 8, Math.min(1, tier / maxTier)), lerp(120, 180, Math.min(1, tier / maxTier)), dir, -0.3);
+      }
+
+      pendingKnockback = { vx, vy };
+      hitStopTimer = Math.max(hitStopTimer, HIT_STOP_SEC);
+      isDashing = false;
       controlLockTimer = Math.max(controlLockTimer, safeStunMs / 1000);
-      clearCombatInputs();     // no steering/jumping/dashing/attacking during hit-stun
+      clearCombatInputs();
     });
 
     // Draws one bat mid-swing, rotated around the character's center (the
@@ -1796,6 +2054,18 @@
 
       updateOtherPlayersInterpolation(deltaTime);
       updateOtherPlayersAnimation(deltaTime);
+      updateVisualEffects(deltaTime);
+
+      // Freeze only the local player's animation/physics for the tiny hit-stop.
+      // Other players and particles keep animating, which makes the pause read
+      // as impact rather than a browser hitch.
+      if (hitStopTimer > 0) {
+        hitStopTimer = Math.max(0, hitStopTimer - deltaTime);
+        clearCombatInputs();
+        if (hitStopTimer <= 0) applyPendingKnockback();
+        updatePlayerCamera(deltaTime);
+        return;
+      }
 
       frameTimer += deltaTime;
       if (frameTimer >= frameInterval) {
@@ -1846,10 +2116,12 @@
           player.onGround = false;
           coyoteTimer = 0;
           jumpBufferTimer = 0;
+          triggerJumpFx(false);
         } else if (airJumps > 0) {
           player.Yv = -jumpVelocity();
           airJumps--;
           jumpBufferTimer = 0;
+          triggerJumpFx(true);
         }
       }
 
@@ -1963,6 +2235,7 @@
         player.Yv += (player.Yv < 0 ? GRAVITY_UP : GRAVITY_DOWN) * deltaTime;
         if (player.Yv > MAX_FALL) player.Yv = MAX_FALL;
       }
+      const downwardImpactSpeed = Math.max(0, player.Yv);
       player.y += player.Yv*deltaTime;
 
       player.onGround = false; // recomputed below from actual contacts
@@ -2028,6 +2301,12 @@
         player.onGround = true;
       }
 
+      // Only significant airborne impacts get the landing treatment; ordinary
+      // hops stay quiet so the effect doesn't become visual noise.
+      if (!grounded && player.onGround && downwardImpactSpeed >= BIG_LAND_MIN_SPEED) {
+        triggerBigLanding(downwardImpactSpeed);
+      }
+
       // ---- Dynamic player camera ------------------------------------------
       // Blend between base zoom and the active rectangular scene zone.
       updatePlayerCamera(deltaTime);
@@ -2042,6 +2321,7 @@
 
         if (coin_touching) {
           console.log("recieved a coin");
+          triggerCoinPickupFx(coin.x, coin.y);
           coin = null;
           // Server owns the balance and replies with `player_state`.
           socket.emit("coin_taken");
@@ -2145,6 +2425,116 @@
       }
     }
 
+
+    // Small scratch buffer lets us tint a single sprite frame white without
+    // tinting the scenery behind it. It also gives all squash/stretch effects
+    // one common draw path.
+    const spriteFxCanvas = document.createElement('canvas');
+    spriteFxCanvas.width = 64; spriteFxCanvas.height = 64;
+    const spriteFxCtx = spriteFxCanvas.getContext('2d');
+
+    function drawSpriteFrame(context, image, frameIndex, frameRow, x, y, options = {}) {
+      const fw = 64, fh = 64;
+      const alpha = options.alpha == null ? 1 : options.alpha;
+      const sxScale = options.scaleX == null ? 1 : options.scaleX;
+      const syScale = options.scaleY == null ? 1 : options.scaleY;
+      const flash = options.whiteFlash === true;
+
+      let source = image;
+      let srcX = (frameIndex || 0) * fw, srcY = (frameRow || 0) * fh;
+      if (flash) {
+        spriteFxCtx.setTransform(1,0,0,1,0,0);
+        spriteFxCtx.clearRect(0, 0, fw, fh);
+        spriteFxCtx.globalCompositeOperation = 'source-over';
+        spriteFxCtx.globalAlpha = 1;
+        spriteFxCtx.drawImage(image, srcX, srcY, fw, fh, 0, 0, fw, fh);
+        spriteFxCtx.globalCompositeOperation = 'source-atop';
+        spriteFxCtx.fillStyle = '#ffffff';
+        spriteFxCtx.fillRect(0, 0, fw, fh);
+        spriteFxCtx.globalCompositeOperation = 'source-over';
+        source = spriteFxCanvas; srcX = 0; srcY = 0;
+      }
+
+      context.save();
+      context.globalAlpha *= alpha;
+      context.translate(x + fw / 2, y + fh / 2);
+      context.scale(sxScale, syScale);
+      context.drawImage(source, srcX, srcY, fw, fh, -fw / 2, -fh / 2, fw, fh);
+      context.restore();
+    }
+
+    function drawAfterimages(now) {
+      for (const a of dashAfterimages) {
+        const alpha = Math.max(0, (a.life / a.maxLife) * 0.34);
+        drawSpriteFrame(playObj, skinSheet(a.skin, a.action), a.frameIndex, a.frameRow, a.x - 20, a.y - 20, { alpha });
+      }
+    }
+
+    function drawWorldEffects() {
+      for (const p of fxParticles) {
+        const alpha = Math.max(0, Math.min(1, p.life / p.maxLife));
+        playObj.save();
+        playObj.globalAlpha = alpha;
+        playObj.fillStyle = p.color || '#fff';
+        playObj.strokeStyle = p.color || '#fff';
+        if (p.type === 'line') {
+          playObj.lineWidth = p.lineWidth || 2;
+          playObj.beginPath();
+          playObj.moveTo(Math.round(p.x), Math.round(p.y));
+          playObj.lineTo(Math.round(p.x - (p.dir || 1) * (p.size || 10)), Math.round(p.y));
+          playObj.stroke();
+        } else if (p.type === 'spark') {
+          const r = (p.size || 5) * alpha;
+          playObj.fillRect(Math.round(p.x - r / 2), Math.round(p.y - 1), Math.round(r), 2);
+          playObj.fillRect(Math.round(p.x - 1), Math.round(p.y - r / 2), 2, Math.round(r));
+        } else {
+          const size = Math.max(1, Math.round((p.size || 3) * (0.55 + 0.45 * alpha)));
+          playObj.fillRect(Math.round(p.x - size / 2), Math.round(p.y - size / 2), size, size);
+        }
+        playObj.restore();
+      }
+
+      for (const r of fxRings) {
+        const t = 1 - r.life / r.maxLife;
+        const radius = lerp(r.startRadius, r.endRadius, t);
+        const alpha = Math.max(0, 1 - t);
+        // Eight snapped points make a deliberately pixel-ish expanding ring.
+        playObj.save();
+        playObj.globalAlpha = alpha;
+        playObj.strokeStyle = r.color;
+        playObj.lineWidth = r.lineWidth || 2;
+        playObj.beginPath();
+        const pts = [];
+        for (let i = 0; i < 8; i++) {
+          const a = -Math.PI / 2 + i * Math.PI / 4;
+          pts.push([Math.round(r.x + Math.cos(a) * radius), Math.round(r.y + Math.sin(a) * radius)]);
+        }
+        playObj.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) playObj.lineTo(pts[i][0], pts[i][1]);
+        playObj.closePath();
+        playObj.stroke();
+        playObj.restore();
+      }
+
+      if (coinPickupFx) {
+        const now = performance.now();
+        const t = (now - coinPickupFx.start) / coinPickupFx.duration;
+        if (t >= 1) {
+          coinPickupFx = null;
+        } else if (coinImg.complete && coinImg.naturalWidth) {
+          const clamped = Math.max(0, t);
+          const popScale = 1 + 0.3 * Math.sin(Math.PI * clamped);
+          const size = 20 * popScale;
+          const cx = coinPickupFx.x + 10;
+          const cy = coinPickupFx.y + 10 - 12 * clamped;
+          playObj.save();
+          playObj.globalAlpha = 1 - clamped * 0.75;
+          playObj.drawImage(coinImg, cx - size / 2, cy - size / 2, size, size);
+          playObj.restore();
+        }
+      }
+    }
+
     function drawOtherPlayer(p) {
       if (p.invisible) return; // an invisible player is fully hidden to others
       const fw = 64, fh = 64;
@@ -2152,13 +2542,12 @@
       const rx = p.renderX ?? p.x;
       const ry = p.renderY ?? p.y;
 
-      playObj.drawImage(
-        sprite,
-        (p.displayFrameIndex || 0) * fw,
-        (p.displayFrameRow || 0) * fh,
-        fw, fh,
+      const now = performance.now();
+      const hitSquash = now < (p.hitSquashUntil || 0);
+      drawSpriteFrame(
+        playObj, sprite, p.displayFrameIndex || 0, p.displayFrameRow || 0,
         rx - 20, ry - 20,
-        fw, fh
+        { whiteFlash: now < (p.hitFlashUntil || 0), scaleX: hitSquash ? 0.72 : 1, scaleY: hitSquash ? 1.18 : 1 }
       );
 
       playObj.font = '16px Arial';
@@ -2179,9 +2568,15 @@
       // drawImage/fillText below is effectively rendered at
       // (worldX - cameraX, worldY - cameraY). Zoom changes how much of the
       // world fits in this same physical viewport.
-      playObj.setTransform(scale, 0, 0, scale, offsetX - cameraX * scale, offsetY - cameraY * scale);
+      const shake = cameraShakeOffset(performance.now());
+      playObj.setTransform(
+        scale, 0, 0, scale,
+        offsetX - cameraX * scale + shake.x,
+        offsetY - cameraY * scale + shake.y
+      );
 
       setObjects();
+      drawAfterimages(performance.now());
 
       for (const id in otherPlayers) {
         drawOtherPlayer(otherPlayers[id]);
@@ -2189,14 +2584,16 @@
 
       // While invisible YOU see a half-transparent slime; everyone else sees
       // nothing (their client skips drawing you — see drawOtherPlayer).
-      if (player.invisible) playObj.globalAlpha = 0.5;
-      playObj.drawImage(
-        skinSheet(player.skin, player.action),
-        animations.currentFrame * animations.frameWidth,
-        animations.frameRow * animations.frameHeight,
-        animations.frameWidth, animations.frameHeight,
-        player.x- 20, player.y - 20,
-        animations.frameWidth, animations.frameHeight
+      const nowSpriteFx = performance.now();
+      const localScale = localSpriteScale(nowSpriteFx);
+      drawSpriteFrame(
+        playObj, skinSheet(player.skin, player.action), animations.currentFrame, animations.frameRow,
+        player.x - 20, player.y - 20,
+        {
+          alpha: player.invisible ? 0.5 : 1,
+          whiteFlash: nowSpriteFx < localHitFlashUntil,
+          scaleX: localScale.x, scaleY: localScale.y,
+        }
       );
 
       playObj.font = '16px Arial';
@@ -2234,6 +2631,10 @@
         );
       }
 
+      // Dust, impact pixels, rings, dash streaks and the coin pop sit above
+      // characters/weapons but below chat bubbles.
+      drawWorldEffects();
+
       // Chat bubbles go on top of sprites and usernames, drawn in the same
       // world space so they scale with everything else.
       const nowMs = performance.now();
@@ -2270,7 +2671,18 @@
       playObj.textAlign = 'left';
       playObj.textBaseline = 'middle';
       playObj.fillStyle = '#f3f7ee';
-      playObj.fillText(scoreText, chipX + chipPadX, chipY + chipH / 2 + 1);
+      const hudNow = performance.now();
+      if (hudNow < hudCoinPulseUntil) {
+        const remaining = (hudCoinPulseUntil - hudNow) / 190;
+        const pulse = 1 + 0.25 * Math.sin(Math.PI * (1 - remaining));
+        playObj.save();
+        playObj.translate(chipX + chipPadX, chipY + chipH / 2 + 1);
+        playObj.scale(pulse, pulse);
+        playObj.fillText(scoreText, 0, 0);
+        playObj.restore();
+      } else {
+        playObj.fillText(scoreText, chipX + chipPadX, chipY + chipH / 2 + 1);
+      }
 
       const now = performance.now();
       if (now - lastMoveEmit >= MOVE_EMIT_INTERVAL_MS) {

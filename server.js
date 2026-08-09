@@ -1049,11 +1049,25 @@ io.on('connection', (socket) => {
           const stunMaxMs = Math.max(stunBaseMs, finiteNumber(kbCfg.stunMaxMs, 1500, 0));
           const stunMs = Math.round(stunBaseMs + (stunMaxMs - stunBaseMs) * (knockTier / maxTier));
 
+          // Viewer-only game-feel event. overlay.html has no listener, so the
+          // stream view stays stable. This is emitted only after server-side
+          // hit detection succeeds, making attacker hit-confirm feedback real.
+          io.emit('player-hit', {
+            attackerId: socket.id,
+            targetId: id,
+            dir,
+            tier: knockTier,
+            maxTier,
+          });
+
           io.to(id).emit('knockback', {
             vx: dir * component,
             vy: -component,
             stunMs,
             tier: knockTier,
+            maxTier,
+            dir,
+            attackerId: socket.id,
           });
         }
       }
