@@ -701,23 +701,66 @@
     const VIEW_WIDTH = 1000;   // world units visible horizontally at once
     const VIEW_HEIGHT = 500;   // full world height is always visible
 
-    // Horizontal camera. Follows the player, clamped so it never shows past
-    // the world's left or right edge. Y never moves — vertical is fixed.
+    // ---- Player-side dynamic camera ---------------------------------------
+    // scene.json can define a base zoom plus rectangular zoom zones. This is
+    // intentionally ONLY implemented in viewer.html: overlay.html keeps its
+    // existing full-world framing and ignores scene.camera completely.
     let cameraX = 0;
+    let cameraY = 0;
+    let cameraBaseZoom = 1;
+    let cameraZoom = 1;
+    let cameraTargetZoom = 1;
+    let cameraZoomZones = [];
+    const CAMERA_ZOOM_MIN = 0.25;
+    const CAMERA_ZOOM_MAX = 3;
+    const CAMERA_ZOOM_TAU = 0.22; // seconds; smooth but responsive zone blend
 
+    let baseScale = 1;
     let scale = 1;
     let offsetX = 0;
     let offsetY = 0;
 
+    function clampCameraZoom(v) {
+      const n = Number(v);
+      return Math.max(CAMERA_ZOOM_MIN, Math.min(CAMERA_ZOOM_MAX, Number.isFinite(n) ? n : 1));
+    }
+
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
+      baseScale = Math.min(canvas.width / VIEW_WIDTH, canvas.height / VIEW_HEIGHT);
+      offsetX = (canvas.width - VIEW_WIDTH * baseScale) / 2;
+      offsetY = (canvas.height - VIEW_HEIGHT * baseScale) / 2;
+      scale = baseScale * cameraZoom;
+    }
 
-      // Uniform scale so sprites don't stretch/distort; letterbox to center.
-      // Scale is based on the VIEW (the visible window), not the world.
-      scale = Math.min(canvas.width / VIEW_WIDTH, canvas.height / VIEW_HEIGHT);
-      offsetX = (canvas.width - VIEW_WIDTH * scale) / 2;
-      offsetY = (canvas.height - VIEW_HEIGHT * scale) / 2;
+    function zoomTargetAtPlayer() {
+      const px = player.x + player.width / 2;
+      const py = player.y + player.height / 2;
+      for (let i = cameraZoomZones.length - 1; i >= 0; i--) {
+        const z = cameraZoomZones[i];
+        if (px >= z.x && px <= z.x + z.width && py >= z.y && py <= z.y + z.height) return clampCameraZoom(z.zoom);
+      }
+      return cameraBaseZoom;
+    }
+
+    function cameraAxisFor(center, worldSize, visibleSize) {
+      if (visibleSize >= worldSize) return (worldSize - visibleSize) / 2;
+      return Math.max(0, Math.min(center - visibleSize / 2, worldSize - visibleSize));
+    }
+
+    function updatePlayerCamera(deltaTime) {
+      cameraTargetZoom = zoomTargetAtPlayer();
+      const dt = Math.max(0, Math.min(Number(deltaTime) || 0, 0.25));
+      const blend = 1 - Math.exp(-dt / CAMERA_ZOOM_TAU);
+      cameraZoom += (cameraTargetZoom - cameraZoom) * blend;
+      if (Math.abs(cameraTargetZoom - cameraZoom) < 0.001) cameraZoom = cameraTargetZoom;
+      cameraZoom = clampCameraZoom(cameraZoom);
+      scale = baseScale * cameraZoom;
+      const visibleW = VIEW_WIDTH / cameraZoom;
+      const visibleH = VIEW_HEIGHT / cameraZoom;
+      cameraX = cameraAxisFor(player.x + player.width / 2, WORLD_WIDTH, visibleW);
+      cameraY = cameraAxisFor(player.y + player.height / 2, WORLD_HEIGHT, visibleH);
     }
 
     window.addEventListener('resize', resizeCanvas);
@@ -1509,7 +1552,7 @@
     function positionChatInput() {
       if (!chatOpen) return;
       const screenX = offsetX + (player.x + player.width / 2 - cameraX) * scale;
-      const screenY = offsetY + (player.y - 30) * scale;
+      const screenY = offsetY + (player.y - 30 - cameraY) * scale;
       chatInputWrap.style.left = `${screenX}px`;
       chatInputWrap.style.top = `${screenY}px`;
     }
@@ -1985,11 +2028,9 @@
         player.onGround = true;
       }
 
-      // ---- Camera: follow the player horizontally, clamped to the world ----
-      // Centered on the player, but never allowed to show past either edge:
-      // cameraX lives in [0, WORLD_WIDTH - VIEW_WIDTH]. X only — Y is fixed.
-      cameraX = player.x + player.width / 2 - VIEW_WIDTH / 2;
-      cameraX = Math.max(0, Math.min(cameraX, WORLD_WIDTH - VIEW_WIDTH));
+      // ---- Dynamic player camera ------------------------------------------
+      // Blend between base zoom and the active rectangular scene zone.
+      updatePlayerCamera(deltaTime);
 
       // ---- Coin pickup (position is final for this frame at this point) ----
       if (coin != null) {
@@ -2053,6 +2094,14 @@
             .filter(p => p && p.src && Number.isFinite(p.x) && Number.isFinite(p.y))
             .map(p => ({ src: p.src, x: +p.x, y: +p.y, width: +p.width || 32, height: +p.height || 32 }));
         }
+        const cam = scene.camera && typeof scene.camera === 'object' ? scene.camera : {};
+        cameraBaseZoom = clampCameraZoom(cam.baseZoom ?? 1);
+        cameraZoomZones = Array.isArray(cam.zoomZones)
+          ? cam.zoomZones.filter(z => z && Number.isFinite(Number(z.x)) && Number.isFinite(Number(z.y)))
+              .map(z => ({ x:Number(z.x), y:Number(z.y), width:Math.max(1, Number(z.width) || 1), height:Math.max(1, Number(z.height) || 1), zoom:clampCameraZoom(z.zoom ?? cameraBaseZoom) }))
+          : [];
+        cameraZoom = cameraBaseZoom;
+        cameraTargetZoom = cameraBaseZoom;
         if (scene.ground) {
           if (Number.isFinite(scene.ground.height)) GROUND_GRASS_HEIGHT = scene.ground.height;
           if (Number.isFinite(scene.ground.tileWidth)) GROUND_TILE_WIDTH = scene.ground.tileWidth;
@@ -2128,9 +2177,9 @@
       // in three things at once: the view scale, the letterbox offset, and
       // the camera — subtracting cameraX*scale means every world-space
       // drawImage/fillText below is effectively rendered at
-      // (worldX - cameraX), which is what makes the view scroll. Y has no
-      // camera term: vertical is fixed.
-      playObj.setTransform(scale, 0, 0, scale, offsetX - cameraX * scale, offsetY);
+      // (worldX - cameraX, worldY - cameraY). Zoom changes how much of the
+      // world fits in this same physical viewport.
+      playObj.setTransform(scale, 0, 0, scale, offsetX - cameraX * scale, offsetY - cameraY * scale);
 
       setObjects();
 

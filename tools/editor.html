@@ -129,6 +129,8 @@
     .badge.hitbox { background: var(--gold-dark); }
     .badge.coin { background: var(--gold); color: var(--ink); }
     .badge.playerStart { background: #3b6ff5; }
+    .badge.zoomZone { background: #815acb; }
+    .badge.multi { background: #34573f; color: var(--slime); }
     .insp-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
     .insp-actions .btn { flex: 1; font-size: 12px; padding: 6px 8px; }
     .thumb-preview {
@@ -223,9 +225,13 @@
     <div class="sep"></div>
     <button class="btn tool active" data-tool="select" title="Select / move / resize (V)">▻ Select</button>
     <button class="btn tool" data-tool="hitbox" title="Draw a collision box (B)">▧ Hitbox</button>
+    <button class="btn tool" data-tool="zoomZone" title="Draw a player-camera zoom zone (Z)">⌕ Zoom Zone</button>
     <button class="btn tool" data-tool="coin" title="Place a coin spawn (C)">● Coin</button>
     <button class="btn tool" data-tool="playerStart" title="Move the player spawn (P)">⚑ Spawn</button>
     <button class="btn tool" data-tool="pan" title="Pan the view (hold Space)">✋ Pan</button>
+    <div class="sep"></div>
+    <button class="btn ghost" id="groupBtn" title="Stick selected objects together (Ctrl+G)">⛓ Group</button>
+    <button class="btn ghost" id="ungroupBtn" title="Unstick selected group (Ctrl+Shift+G)">⛓ Unstick</button>
     <div class="sep"></div>
     <button class="btn ghost" id="zoomOut" title="Zoom out">−</button>
     <span id="zoomLabel" style="font-size:12px;color:var(--muted);width:42px;text-align:center;">100%</span>
@@ -257,7 +263,7 @@
     <div id="canvasWrap">
       <canvas id="editorCanvas"></canvas>
       <div id="canvasHint">
-        Drag assets in · <kbd>Ctrl+C</kbd>/<kbd>Ctrl+V</kbd> copy/paste · <kbd>B</kbd> box · <kbd>C</kbd> coin · <kbd>Del</kbd> remove · <kbd>Space</kbd>+drag pan · wheel zoom
+        Drag empty space to box-select · Shift/Ctrl-click add/remove · <kbd>Ctrl+G</kbd> group · <kbd>Ctrl+C</kbd>/<kbd>Ctrl+V</kbd> copy/paste · <kbd>Z</kbd> zoom zone · <kbd>B</kbd> box · <kbd>Del</kbd> remove · wheel zoom
       </div>
       <div id="coords">0, 0</div>
     </div>
@@ -311,13 +317,18 @@
 
 // ---- Scene model (the thing we save) ---------------------------------------
 const scene = {
-  version: 1,
+  version: 2,
   world: { width: 3000, height: 500 },
   playerStart: { x: 100, y: 480 },
   ground: { sprite: '/assets/obstacles/grass.png', height: 14, tileWidth: 40 },
-  props: [],      // { src, x, y, width, height }  — decoration, no collision
-  hitboxes: [],   // { x, y, width, height }        — solid crates / platforms
-  coins: [],      // { x, y }                       — coin spawn points
+  // Player-side camera only. overlay.html intentionally ignores this block.
+  camera: {
+    baseZoom: 1,
+    zoomZones: [], // { x, y, width, height, zoom } — last overlapping zone wins
+  },
+  props: [],      // { src, x, y, width, height, groupId? } — decoration
+  hitboxes: [],   // { x, y, width, height, groupId? }       — collision
+  coins: [],      // { x, y, groupId? }                      — coin spawn points
 };
 
 
@@ -363,16 +374,17 @@ const view = { scale: 1, panX: -40, panY: -40 };
 
 // ---- Editor state ----------------------------------------------------------
 let tool = 'select';
-let selection = null;         // { type:'prop'|'hitbox'|'coin'|'playerStart', index }
+let selection = null;         // primary selected ref (kept for the existing inspector)
+let selections = [];          // every selected ref; Shift/Ctrl-click builds this list
 let activeAsset = null;       // asset src armed for click-to-place
 let snap = false, gridSize = 10;
 
-// Internal scene clipboard used by Ctrl+C / Ctrl+V.
-// It deliberately copies the whole object so props keep their exact image
-// source + dimensions and hitboxes keep their exact collision dimensions.
-let sceneClipboard = null;    // { type:'prop'|'hitbox'|'coin', data:{...} }
-let pasteCount = 0;           // repeated pastes walk diagonally so copies are visible
+// Internal scene clipboard. It can contain one object OR a whole mixed group
+// of props/hitboxes/coins/zoom zones, preserving dimensions and relative layout.
+let sceneClipboard = null;    // { entries:[{type,data}], count }
+let pasteCount = 0;
 const PASTE_OFFSET = 20;
+let groupSerial = 1;
 
 const COIN_SIZE = 20;         // matches how the game draws coins
 const HANDLE = 8;             // resize handle size in screen px
@@ -397,6 +409,85 @@ function w2sy(y) { return (y - view.panY) * view.scale; }
 function s2wx(sx) { return sx / view.scale + view.panX; }
 function s2wy(sy) { return sy / view.scale + view.panY; }
 function snapVal(v) { return snap ? Math.round(v / gridSize) * gridSize : Math.round(v); }
+
+function refKey(ref) { return ref ? `${ref.type}:${ref.index}` : ''; }
+function sameRef(a, b) { return !!a && !!b && a.type === b.type && a.index === b.index; }
+function selectedRefs() { return selections.filter(ref => !!rectOf(ref.type, ref.index)); }
+function setSelections(refs, primary = null) {
+  const seen = new Set();
+  selections = (refs || []).filter(ref => {
+    if (!ref || !rectOf(ref.type, ref.index)) return false;
+    const k = refKey(ref); if (seen.has(k)) return false; seen.add(k); return true;
+  });
+  selection = primary && selections.some(r => sameRef(r, primary))
+    ? selections.find(r => sameRef(r, primary))
+    : (selections[selections.length - 1] || null);
+}
+function clearSelection() { setSelections([]); }
+function isSelectedRef(type, index) { return selections.some(r => r.type === type && r.index === index); }
+function objectForRef(ref) {
+  if (!ref) return null;
+  if (ref.type === 'prop') return scene.props[ref.index] || null;
+  if (ref.type === 'hitbox') return scene.hitboxes[ref.index] || null;
+  if (ref.type === 'coin') return scene.coins[ref.index] || null;
+  if (ref.type === 'zoomZone') return scene.camera.zoomZones[ref.index] || null;
+  if (ref.type === 'playerStart') return scene.playerStart;
+  return null;
+}
+function canGroupRef(ref) { return !!ref && ['prop','hitbox','coin'].includes(ref.type); }
+function allGroupableRefs() {
+  const out = [];
+  scene.props.forEach((_, index) => out.push({ type:'prop', index }));
+  scene.hitboxes.forEach((_, index) => out.push({ type:'hitbox', index }));
+  scene.coins.forEach((_, index) => out.push({ type:'coin', index }));
+  return out;
+}
+function allBoxSelectableRefs() {
+  return [...allGroupableRefs(), ...scene.camera.zoomZones.map((_, index) => ({ type:'zoomZone', index }))];
+}
+function rectsIntersect(a, b) {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+function refsForGroup(groupId) {
+  if (!groupId) return [];
+  return allGroupableRefs().filter(ref => objectForRef(ref)?.groupId === groupId);
+}
+function newGroupId() {
+  const used = new Set(allGroupableRefs().map(ref => objectForRef(ref)?.groupId).filter(Boolean));
+  let id; do { id = `g${groupSerial++}`; } while (used.has(id));
+  return id;
+}
+function toggleSelection(ref) {
+  const ix = selections.findIndex(r => sameRef(r, ref));
+  if (ix >= 0) selections.splice(ix, 1); else selections.push(ref);
+  selection = selections[selections.length - 1] || null;
+}
+function moveRefTo(ref, x, y) {
+  const obj = objectForRef(ref); if (!obj) return; obj.x = x; obj.y = y;
+}
+function moveSelectedBy(dx, dy) {
+  for (const ref of selectedRefs()) {
+    const obj = objectForRef(ref);
+    if (!obj) continue;
+    obj.x += dx; obj.y += dy;
+  }
+}
+function groupSelection() {
+  const refs = selectedRefs().filter(canGroupRef);
+  if (refs.length < 2) { setStatus('select 2+ props/hitboxes/coins to group', 'err'); return; }
+  const id = newGroupId();
+  refs.forEach(ref => { objectForRef(ref).groupId = id; });
+  setSelections(refs, refs[refs.length - 1]);
+  renderInspector(); setStatus(`${refs.length} objects grouped ✓`, 'ok');
+}
+function ungroupSelection() {
+  const refs = selectedRefs().filter(canGroupRef);
+  const ids = new Set(refs.map(ref => objectForRef(ref)?.groupId).filter(Boolean));
+  if (!ids.size) { setStatus('selected objects are not grouped', 'err'); return; }
+  // Unstick the whole selected group(s), not just the one clicked member.
+  allGroupableRefs().forEach(ref => { if (ids.has(objectForRef(ref)?.groupId)) delete objectForRef(ref).groupId; });
+  renderInspector(); setStatus('group un-stuck ✓', 'ok');
+}
 
 function resize() {
   canvas.width = wrap.clientWidth;
@@ -455,7 +546,7 @@ function render() {
       ctx.fillStyle = 'rgba(126,217,87,.25)';
       ctx.fillRect(w2sx(p.x), w2sy(p.y), (p.width || 32) * view.scale, (p.height || 32) * view.scale);
     }
-    if (selection && selection.type === 'prop' && selection.index === i) drawSelection(p);
+    if (isSelectedRef('prop', i)) drawSelection(p);
   });
 
   // Hitboxes are INVISIBLE collision in the game, so here we only draw an
@@ -470,7 +561,7 @@ function render() {
     ctx.setLineDash([5, 3]);
     ctx.strokeRect(sx, sy, sw, sh);
     ctx.setLineDash([]);
-    if (selection && selection.type === 'hitbox' && selection.index === i) drawSelection(b);
+    if (isSelectedRef('hitbox', i)) drawSelection(b);
   });
 
   // Coins
@@ -483,11 +574,27 @@ function render() {
       ctx.arc(w2sx(c.x + COIN_SIZE / 2), w2sy(c.y + COIN_SIZE / 2), (COIN_SIZE / 2) * view.scale, 0, Math.PI * 2);
       ctx.fill();
     }
-    if (selection && selection.type === 'coin' && selection.index === i) {
+    if (isSelectedRef('coin', i)) {
       ctx.strokeStyle = '#7ed957'; ctx.lineWidth = 2;
       ctx.strokeRect(w2sx(c.x) - 2, w2sy(c.y) - 2, COIN_SIZE * view.scale + 4, COIN_SIZE * view.scale + 4);
     }
   });
+
+  // Player-only camera zoom zones. These are editor guides only; viewer.html
+  // consumes them, while overlay.html deliberately ignores them.
+  scene.camera.zoomZones.forEach((z, i) => {
+    const sx = w2sx(z.x), sy = w2sy(z.y), sw = z.width * view.scale, sh = z.height * view.scale;
+    ctx.fillStyle = 'rgba(129,90,203,.12)'; ctx.fillRect(sx, sy, sw, sh);
+    ctx.strokeStyle = isSelectedRef('zoomZone', i) ? '#7ed957' : 'rgba(174,132,255,.95)';
+    ctx.lineWidth = isSelectedRef('zoomZone', i) ? 2.5 : 1.5; ctx.setLineDash([7,4]);
+    ctx.strokeRect(sx, sy, sw, sh); ctx.setLineDash([]);
+    ctx.fillStyle = '#d6c4ff'; ctx.font = 'bold 10px Inter, sans-serif'; ctx.textBaseline = 'top';
+    ctx.fillText(`ZOOM ${Number(z.zoom || 1).toFixed(2)}×`, sx + 5, sy + 5);
+    if (isSelectedRef('zoomZone', i) && selections.length === 1) drawSelection(z);
+  });
+
+  if (selections.length > 1) drawMultiSelectionBounds();
+  drawMarquee();
 
   // Player start marker
   drawPlayerStart();
@@ -523,6 +630,31 @@ function drawSelection(r) {
   }
 }
 
+function drawMultiSelectionBounds() {
+  const rects = selectedRefs().map(ref => rectOf(ref.type, ref.index)).filter(Boolean);
+  if (!rects.length) return;
+  const left = Math.min(...rects.map(r => r.x));
+  const top = Math.min(...rects.map(r => r.y));
+  const right = Math.max(...rects.map(r => r.x + r.width));
+  const bottom = Math.max(...rects.map(r => r.y + r.height));
+  ctx.strokeStyle = '#7ed957'; ctx.lineWidth = 2; ctx.setLineDash([8,4]);
+  ctx.strokeRect(w2sx(left)-3, w2sy(top)-3, (right-left)*view.scale+6, (bottom-top)*view.scale+6);
+  ctx.setLineDash([]);
+}
+
+function drawMarquee() {
+  if (!drag || drag.mode !== 'marquee') return;
+  const x1 = drag.startWX, y1 = drag.startWY;
+  const x2 = drag.currentWX ?? x1, y2 = drag.currentWY ?? y1;
+  const left = Math.min(x1, x2), top = Math.min(y1, y2);
+  const right = Math.max(x1, x2), bottom = Math.max(y1, y2);
+  ctx.fillStyle = 'rgba(126,217,87,.08)';
+  ctx.fillRect(w2sx(left), w2sy(top), (right-left)*view.scale, (bottom-top)*view.scale);
+  ctx.strokeStyle = '#7ed957'; ctx.lineWidth = 1.5; ctx.setLineDash([5,3]);
+  ctx.strokeRect(w2sx(left), w2sy(top), (right-left)*view.scale, (bottom-top)*view.scale);
+  ctx.setLineDash([]);
+}
+
 function handlePositions(r) {
   const x1 = w2sx(r.x), y1 = w2sy(r.y);
   const x2 = w2sx(r.x + r.width), y2 = w2sy(r.y + r.height);
@@ -537,7 +669,7 @@ function handlePositions(r) {
 function drawPlayerStart() {
   const p = scene.playerStart;
   const sx = w2sx(p.x), sy = w2sy(p.y);
-  const sel = selection && selection.type === 'playerStart';
+  const sel = isSelectedRef('playerStart', 0);
   // Body box (20x20 like the player)
   ctx.strokeStyle = sel ? '#7ed957' : '#3b6ff5';
   ctx.lineWidth = 2;
@@ -558,7 +690,8 @@ function drawPlayerStart() {
 function rectOf(type, index) {
   if (type === 'prop') return scene.props[index];
   if (type === 'hitbox') return scene.hitboxes[index];
-  if (type === 'coin') { const c = scene.coins[index]; return { x: c.x, y: c.y, width: COIN_SIZE, height: COIN_SIZE }; }
+  if (type === 'coin') { const c = scene.coins[index]; return c ? { x: c.x, y: c.y, width: COIN_SIZE, height: COIN_SIZE } : null; }
+  if (type === 'zoomZone') return scene.camera.zoomZones[index] || null;
   if (type === 'playerStart') { const p = scene.playerStart; return { x: p.x, y: p.y, width: 20, height: 20 }; }
   return null;
 }
@@ -572,11 +705,14 @@ function hitTest(wx, wy) {
   if (pointInRect(wx, wy, rectOf('playerStart', 0))) return { type: 'playerStart', index: 0 };
   for (let i = scene.hitboxes.length - 1; i >= 0; i--) if (pointInRect(wx, wy, scene.hitboxes[i])) return { type: 'hitbox', index: i };
   for (let i = scene.props.length - 1; i >= 0; i--) if (pointInRect(wx, wy, scene.props[i])) return { type: 'prop', index: i };
+  // Zones are deliberately last because they can be huge; normal level art
+  // and collision boxes remain easier to click inside a zoom zone.
+  for (let i = scene.camera.zoomZones.length - 1; i >= 0; i--) if (pointInRect(wx, wy, scene.camera.zoomZones[i])) return { type: 'zoomZone', index: i };
   return null;
 }
 // Which resize handle (if any) is under the mouse for the current selection.
 function handleAt(sx, sy) {
-  if (!selection || selection.type === 'coin' || selection.type === 'playerStart') return null;
+  if (!selection || selections.length !== 1 || selection.type === 'coin' || selection.type === 'playerStart') return null;
   const r = rectOf(selection.type, selection.index);
   if (!r) return null;
   for (const h of handlePositions(r)) {
@@ -610,27 +746,54 @@ canvas.addEventListener('mousedown', (e) => {
   }
 
   if (tool === 'select') {
-    // First, a resize handle on the current selection.
     const h = handleAt(sx, sy);
     if (h) {
       drag = { mode: 'resize', handle: h, startWX: wx, startWY: wy, orig: { ...rectOf(selection.type, selection.index) } };
       return;
     }
+
     const hit = hitTest(wx, wy);
-    selection = hit;
-    renderInspector();
-    if (hit) {
-      const r = rectOf(hit.type, hit.index);
-      drag = { mode: 'move', startWX: wx, startWY: wy, orig: { x: r.x, y: r.y } };
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    if (additive) {
+      if (hit && hit.type !== 'playerStart') { toggleSelection(hit); renderInspector(); return; }
+      drag = { mode:'marquee', startWX:wx, startWY:wy, currentWX:wx, currentWY:wy, additive:true, baseSelections:selectedRefs().map(r => ({...r})) };
+      return;
     }
+
+    if (!hit) {
+      drag = {
+        mode:'marquee', startWX:wx, startWY:wy, currentWX:wx, currentWY:wy,
+        additive:false, baseSelections:[],
+      };
+      return;
+    }
+
+    const obj = objectForRef(hit);
+    if (canGroupRef(hit) && obj && obj.groupId) setSelections(refsForGroup(obj.groupId), hit);
+    else setSelections([hit], hit);
+    renderInspector();
+
+    const refs = selectedRefs();
+    const origins = refs.map(ref => { const o = objectForRef(ref); return { ref:{...ref}, x:o.x, y:o.y }; });
+    const primaryOrigin = origins.find(o => sameRef(o.ref, hit)) || origins[0];
+    drag = { mode: 'moveMulti', startWX: wx, startWY: wy, origins, primaryOrigin };
     return;
   }
 
   if (tool === 'hitbox') {
     const x = snapVal(wx), y = snapVal(wy);
     scene.hitboxes.push({ x, y, width: 0, height: 0 });
-    selection = { type: 'hitbox', index: scene.hitboxes.length - 1 };
+    setSelections([{ type: 'hitbox', index: scene.hitboxes.length - 1 }]);
     drag = { mode: 'draw', startWX: x, startWY: y };
+    renderInspector();
+    return;
+  }
+
+  if (tool === 'zoomZone') {
+    const x = snapVal(wx), y = snapVal(wy);
+    scene.camera.zoomZones.push({ x, y, width: 0, height: 0, zoom: Math.max(0.25, Number(scene.camera.baseZoom) || 1) });
+    setSelections([{ type:'zoomZone', index: scene.camera.zoomZones.length - 1 }]);
+    drag = { mode:'drawZoom', startWX:x, startWY:y };
     renderInspector();
     return;
   }
@@ -638,7 +801,7 @@ canvas.addEventListener('mousedown', (e) => {
   if (tool === 'coin') {
     const x = snapVal(wx - COIN_SIZE / 2), y = snapVal(wy - COIN_SIZE / 2);
     scene.coins.push({ x, y });
-    selection = { type: 'coin', index: scene.coins.length - 1 };
+    setSelections([{ type: 'coin', index: scene.coins.length - 1 }]);
     renderInspector();
     return;
   }
@@ -646,7 +809,7 @@ canvas.addEventListener('mousedown', (e) => {
   if (tool === 'playerStart') {
     scene.playerStart.x = snapVal(wx - 10);
     scene.playerStart.y = snapVal(wy - 10);
-    selection = { type: 'playerStart', index: 0 };
+    setSelections([{ type: 'playerStart', index: 0 }]);
     renderInspector();
     return;
   }
@@ -666,12 +829,19 @@ window.addEventListener('mousemove', (e) => {
 
   const wx = s2wx(sx), wy = s2wy(sy);
 
-  if (drag.mode === 'move') {
-    const dx = wx - drag.startWX, dy = wy - drag.startWY;
-    const nx = snapVal(drag.orig.x + dx), ny = snapVal(drag.orig.y + dy);
-    if (selection.type === 'coin') { scene.coins[selection.index].x = nx; scene.coins[selection.index].y = ny; }
-    else if (selection.type === 'playerStart') { scene.playerStart.x = nx; scene.playerStart.y = ny; }
-    else { const r = rectOf(selection.type, selection.index); r.x = nx; r.y = ny; }
+  if (drag.mode === 'marquee') {
+    drag.currentWX = wx; drag.currentWY = wy;
+    return;
+  }
+
+  if (drag.mode === 'moveMulti') {
+    const rawDX = wx - drag.startWX, rawDY = wy - drag.startWY;
+    let dx = rawDX, dy = rawDY;
+    if (snap && drag.primaryOrigin) {
+      dx = snapVal(drag.primaryOrigin.x + rawDX) - drag.primaryOrigin.x;
+      dy = snapVal(drag.primaryOrigin.y + rawDY) - drag.primaryOrigin.y;
+    }
+    drag.origins.forEach(o => moveRefTo(o.ref, o.x + dx, o.y + dy));
     renderInspector();
     return;
   }
@@ -681,6 +851,15 @@ window.addEventListener('mousemove', (e) => {
     const x2 = snapVal(wx), y2 = snapVal(wy);
     b.x = Math.min(drag.startWX, x2); b.y = Math.min(drag.startWY, y2);
     b.width = Math.abs(x2 - drag.startWX); b.height = Math.abs(y2 - drag.startWY);
+    renderInspector();
+    return;
+  }
+
+  if (drag.mode === 'drawZoom') {
+    const z = scene.camera.zoomZones[selection.index];
+    const x2 = snapVal(wx), y2 = snapVal(wy);
+    z.x = Math.min(drag.startWX, x2); z.y = Math.min(drag.startWY, y2);
+    z.width = Math.abs(x2 - drag.startWX); z.height = Math.abs(y2 - drag.startWY);
     renderInspector();
     return;
   }
@@ -702,14 +881,24 @@ window.addEventListener('mousemove', (e) => {
 });
 
 window.addEventListener('mouseup', () => {
+  if (drag && drag.mode === 'marquee') {
+    const x1 = drag.startWX, y1 = drag.startWY, x2 = drag.currentWX ?? x1, y2 = drag.currentWY ?? y1;
+    const area = { x:Math.min(x1,x2), y:Math.min(y1,y2), width:Math.abs(x2-x1), height:Math.abs(y2-y1) };
+    const picked = (area.width * view.scale >= 3 || area.height * view.scale >= 3)
+      ? allBoxSelectableRefs().filter(ref => { const r=rectOf(ref.type, ref.index); return r && rectsIntersect(area, r); })
+      : [];
+    const combined = drag.additive ? [...drag.baseSelections, ...picked] : picked;
+    setSelections(combined, picked[picked.length-1] || combined[combined.length-1] || null);
+    renderInspector();
+  }
   if (drag && drag.mode === 'draw') {
-    // Discard a zero-size box (a plain click with the hitbox tool).
     const b = scene.hitboxes[selection.index];
-    if (b.width < 2 || b.height < 2) {
-      // Give a click a sensible default box instead of deleting it.
-      b.width = b.width < 2 ? 40 : b.width;
-      b.height = b.height < 2 ? 20 : b.height;
-    }
+    if (b.width < 2 || b.height < 2) { b.width = b.width < 2 ? 40 : b.width; b.height = b.height < 2 ? 20 : b.height; }
+    renderInspector();
+  }
+  if (drag && drag.mode === 'drawZoom') {
+    const z = scene.camera.zoomZones[selection.index];
+    if (z.width < 2 || z.height < 2) { z.width = z.width < 2 ? 200 : z.width; z.height = z.height < 2 ? 150 : z.height; }
     renderInspector();
   }
   drag = null;
@@ -749,7 +938,7 @@ function placeProp(src, wx, wy, centered) {
     height: im.naturalHeight || 0,
   };
   scene.props.push(prop);
-  selection = { type: 'prop', index: scene.props.length - 1 };
+  setSelections([{ type: 'prop', index: scene.props.length - 1 }]);
   tool = 'select'; syncToolButtons();
   renderInspector();
 }
@@ -760,9 +949,14 @@ function placeProp(src, wx, wy, centered) {
 const inspBody = document.getElementById('inspBody');
 
 function renderInspector() {
-  if (!selection) { renderWorldInspector(); return; }
+  const refs = selectedRefs();
+  if (!refs.length) { clearSelection(); renderWorldInspector(); return; }
+  if (refs.length > 1) { renderMultiInspector(refs); return; }
+  selection = refs[0]; selections = refs;
   const t = selection.type;
   let html = `<span class="badge ${t}">${t}</span>`;
+  const selectedObj = objectForRef(selection);
+  if (selectedObj && selectedObj.groupId) html += `<div class="src-label">Group: <b>${selectedObj.groupId}</b> · clicking any member selects the whole group</div>`;
 
   if (t === 'prop') {
     const p = scene.props[selection.index];
@@ -791,12 +985,39 @@ function renderInspector() {
       <button class="btn ghost" data-act="copy">Copy</button>
       <button class="btn danger" data-act="delete">Delete</button>
     </div>`;
+  } else if (t === 'zoomZone') {
+    const z = scene.camera.zoomZones[selection.index];
+    html += numRow('X', 'zz-x', z.x) + numRow('Y', 'zz-y', z.y);
+    html += numRow('Width', 'zz-w', z.width) + numRow('Height', 'zz-h', z.height);
+    html += decimalRow('Zoom ×', 'zz-zoom', z.zoom, 0.05, 0.25, 3);
+    html += `<p class="insp-empty">Player-side only. 1.00× = base view, &gt;1 zooms in, &lt;1 zooms out. Last overlapping zone wins.</p>`;
+    html += `<div class="insp-actions"><button class="btn ghost" data-act="copy">Copy</button><button class="btn danger" data-act="delete">Delete</button></div>`;
   } else if (t === 'playerStart') {
     const p = scene.playerStart;
     html += numRow('X', 'ps-x', p.x) + numRow('Y', 'ps-y', p.y);
     html += `<p class="insp-empty">The player spawns here on join. There is exactly one spawn.</p>`;
   }
   inspBody.innerHTML = html;
+  wireInspector();
+}
+
+function renderMultiInspector(refs) {
+  const groupable = refs.filter(canGroupRef);
+  const groupIds = new Set(groupable.map(ref => objectForRef(ref)?.groupId).filter(Boolean));
+  const counts = {}; refs.forEach(r => counts[r.type] = (counts[r.type] || 0) + 1);
+  const summary = Object.entries(counts).map(([k,v]) => `${v} ${k}${v===1?'':'s'}`).join(' · ');
+  inspBody.innerHTML = `
+    <span class="badge multi">${refs.length} SELECTED</span>
+    <p class="insp-empty">${summary}</p>
+    <p class="insp-empty">Drag any selected object to move the whole selection. Grouping makes props, hitboxes and coins permanently stick together after reload.</p>
+    <div class="insp-actions">
+      <button class="btn ghost" data-act="copy">Copy group</button>
+      <button class="btn gold" data-act="group">Group / Stick</button>
+      <button class="btn ghost" data-act="ungroup">Unstick</button>
+      <button class="btn danger" data-act="delete">Delete all</button>
+    </div>
+    <div class="section-divider"></div>
+    <p class="insp-empty">${groupIds.size ? `Contains ${groupIds.size} saved group${groupIds.size===1?'':'s'}.` : 'No saved group IDs yet.'}</p>`;
   wireInspector();
 }
 
@@ -807,6 +1028,10 @@ function renderWorldInspector() {
     <span class="badge">WORLD</span>
     ${numRow('Width', 'world-w', scene.world.width)}
     ${numRow('Height', 'world-h', scene.world.height)}
+    <div class="section-divider"></div>
+    <span class="badge zoomZone">PLAYER CAMERA</span>
+    ${decimalRow('Base zoom ×', 'camera-base-zoom', scene.camera.baseZoom, 0.05, 0.25, 3)}
+    <p class="insp-empty"><b>${scene.camera.zoomZones.length}</b> zoom zones · only viewer.html uses these; the stream overlay stays unchanged.</p>
     <div class="section-divider"></div>
     <span class="badge">GROUND</span>
     ${numRow('Height', 'ground-h', scene.ground.height)}
@@ -824,6 +1049,10 @@ function renderWorldInspector() {
 function numRow(label, id, val) {
   return `<div class="insp-row"><label>${label}</label><input class="num" style="width:auto;flex:1" type="number" id="${id}" value="${Math.round(val || 0)}"></div>`;
 }
+function decimalRow(label, id, val, step=0.05, min=0, max=10) {
+  const n = Number(val);
+  return `<div class="insp-row"><label>${label}</label><input class="num" style="width:auto;flex:1" type="number" id="${id}" step="${step}" min="${min}" max="${max}" value="${Number.isFinite(n) ? n : 1}"></div>`;
+}
 
 function wireInspector() {
   const bind = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('input', () => fn(parseFloat(el.value) || 0)); };
@@ -839,11 +1068,17 @@ function wireInspector() {
   } else if (selection && selection.type === 'coin') {
     const c = scene.coins[selection.index];
     bind('coin-x', v => c.x = v); bind('coin-y', v => c.y = v);
+  } else if (selection && selection.type === 'zoomZone') {
+    const z = scene.camera.zoomZones[selection.index];
+    bind('zz-x', v => z.x = v); bind('zz-y', v => z.y = v);
+    bind('zz-w', v => z.width = Math.max(1, v)); bind('zz-h', v => z.height = Math.max(1, v));
+    bind('zz-zoom', v => z.zoom = Math.max(0.25, Math.min(3, v || 1)));
   } else if (selection && selection.type === 'playerStart') {
     bind('ps-x', v => scene.playerStart.x = v); bind('ps-y', v => scene.playerStart.y = v);
   } else {
     bind('world-w', v => scene.world.width = Math.max(100, v));
     bind('world-h', v => scene.world.height = Math.max(100, v));
+    bind('camera-base-zoom', v => scene.camera.baseZoom = Math.max(0.25, Math.min(3, v || 1)));
     bind('ground-h', v => scene.ground.height = v);
     bind('ground-tw', v => scene.ground.tileWidth = Math.max(1, v));
   }
@@ -995,14 +1230,16 @@ function inspectorAction(act) {
   if (!selection) return;
   if (act === 'delete') { deleteSelection(); return; }
   if (act === 'copy') { copySelection(); return; }
-  if (selection.type !== 'prop') return;
+  if (act === 'group') { groupSelection(); return; }
+  if (act === 'ungroup') { ungroupSelection(); return; }
+  if (selectedRefs().length !== 1 || selection.type !== 'prop') return;
   const i = selection.index;
   if (act === 'front') {
     const [p] = scene.props.splice(i, 1); scene.props.push(p);
-    selection.index = scene.props.length - 1;
+    setSelections([{ type:'prop', index: scene.props.length - 1 }]);
   } else if (act === 'back') {
     const [p] = scene.props.splice(i, 1); scene.props.unshift(p);
-    selection.index = 0;
+    setSelections([{ type:'prop', index: 0 }]);
   } else if (act === 'natural') {
     const p = scene.props[i]; const im = getImg(p.src);
     if (im.naturalWidth) { p.width = im.naturalWidth; p.height = im.naturalHeight; }
@@ -1011,74 +1248,65 @@ function inspectorAction(act) {
 }
 
 function deleteSelection() {
-  if (!selection) return;
-  const { type, index } = selection;
-  if (type === 'prop') scene.props.splice(index, 1);
-  else if (type === 'hitbox') scene.hitboxes.splice(index, 1);
-  else if (type === 'coin') scene.coins.splice(index, 1);
-  else return; // player start can't be deleted
-  selection = null;
-  renderInspector();
+  const refs = selectedRefs().filter(r => r.type !== 'playerStart');
+  if (!refs.length) return;
+  const byType = {};
+  refs.forEach(r => (byType[r.type] ||= []).push(r.index));
+  for (const [type, indexes] of Object.entries(byType)) {
+    indexes.sort((a,b) => b-a);
+    const arr = type === 'prop' ? scene.props : type === 'hitbox' ? scene.hitboxes : type === 'coin' ? scene.coins : type === 'zoomZone' ? scene.camera.zoomZones : null;
+    if (!arr) continue;
+    indexes.forEach(i => arr.splice(i, 1));
+  }
+  clearSelection(); renderInspector();
 }
 
-// Copy the selected scene object into an internal clipboard.
-// Props include src/width/height, so pasted art is exactly the same size.
-// Hitboxes include width/height, so collision geometry is copied exactly too.
+function appendSceneObject(type, data) {
+  const clone = { ...data };
+  let index = -1;
+  if (type === 'prop') { scene.props.push(clone); index = scene.props.length - 1; }
+  else if (type === 'hitbox') { scene.hitboxes.push(clone); index = scene.hitboxes.length - 1; }
+  else if (type === 'coin') { scene.coins.push(clone); index = scene.coins.length - 1; }
+  else if (type === 'zoomZone') { scene.camera.zoomZones.push(clone); index = scene.camera.zoomZones.length - 1; }
+  return index >= 0 ? { type, index } : null;
+}
+
+// Copy every selected item into one internal clipboard. Saved group IDs are
+// remapped during paste, so a pasted building/platform becomes its OWN group
+// instead of remaining linked to the originals.
 function copySelection() {
-  if (!selection || selection.type === 'playerStart') {
-    setStatus('nothing copyable selected', 'err');
-    return;
-  }
-
-  let source = null;
-  if (selection.type === 'prop') source = scene.props[selection.index];
-  else if (selection.type === 'hitbox') source = scene.hitboxes[selection.index];
-  else if (selection.type === 'coin') source = scene.coins[selection.index];
-
-  if (!source) return;
-
+  const refs = selectedRefs().filter(r => r.type !== 'playerStart');
+  if (!refs.length) { setStatus('nothing copyable selected', 'err'); return; }
   sceneClipboard = {
-    type: selection.type,
-    data: { ...source },
+    entries: refs.map(ref => ({ type: ref.type, data: { ...objectForRef(ref) } })),
+    count: refs.length,
   };
   pasteCount = 0;
-  setStatus(`${selection.type} copied ✓`, 'ok');
+  setStatus(`${refs.length === 1 ? refs[0].type : refs.length + ' objects'} copied ✓`, 'ok');
 }
 
-// Paste a fresh object rather than sharing the same JS reference.
-// Each paste is offset from the ORIGINAL copied position so repeated Ctrl+V
-// creates a visible diagonal stack while preserving size and shape exactly.
 function pasteSelection() {
-  if (!sceneClipboard) {
-    setStatus('copy something first', 'err');
-    return;
+  if (!sceneClipboard || !Array.isArray(sceneClipboard.entries) || !sceneClipboard.entries.length) {
+    setStatus('copy something first', 'err'); return;
   }
-
   pasteCount += 1;
   const offset = PASTE_OFFSET * pasteCount;
-  const data = {
-    ...sceneClipboard.data,
-    x: snapVal(sceneClipboard.data.x + offset),
-    y: snapVal(sceneClipboard.data.y + offset),
-  };
-
-  if (sceneClipboard.type === 'prop') {
-    scene.props.push(data);
-    selection = { type: 'prop', index: scene.props.length - 1 };
-  } else if (sceneClipboard.type === 'hitbox') {
-    scene.hitboxes.push(data);
-    selection = { type: 'hitbox', index: scene.hitboxes.length - 1 };
-  } else if (sceneClipboard.type === 'coin') {
-    scene.coins.push(data);
-    selection = { type: 'coin', index: scene.coins.length - 1 };
-  } else {
-    return;
+  const groupMap = new Map();
+  const pasted = [];
+  for (const entry of sceneClipboard.entries) {
+    const data = { ...entry.data };
+    data.x = snapVal(Number(data.x || 0) + offset);
+    data.y = snapVal(Number(data.y || 0) + offset);
+    if (data.groupId) {
+      if (!groupMap.has(data.groupId)) groupMap.set(data.groupId, newGroupId());
+      data.groupId = groupMap.get(data.groupId);
+    }
+    const ref = appendSceneObject(entry.type, data);
+    if (ref) pasted.push(ref);
   }
-
-  tool = 'select';
-  syncToolButtons();
-  renderInspector();
-  setStatus(`${sceneClipboard.type} pasted ✓`, 'ok');
+  setSelections(pasted, pasted[pasted.length - 1]);
+  tool = 'select'; syncToolButtons(); renderInspector();
+  setStatus(`${pasted.length === 1 ? pasted[0].type : pasted.length + ' objects'} pasted ✓`, 'ok');
 }
 
 // ============================================================================
@@ -1196,6 +1424,8 @@ function fitView() {
 }
 
 document.getElementById('snapToggle').addEventListener('change', e => snap = e.target.checked);
+document.getElementById('groupBtn').addEventListener('click', groupSelection);
+document.getElementById('ungroupBtn').addEventListener('click', ungroupSelection);
 document.getElementById('gridSize').addEventListener('input', e => gridSize = Math.max(1, parseInt(e.target.value) || 10));
 
 document.getElementById('saveBtn').addEventListener('click', saveScene);
@@ -1210,20 +1440,27 @@ function cleanScene() {
   // Emit a tidy, rounded copy so scene.json stays readable.
   const r = n => Math.round(n);
   return {
-    version: 1,
+    version: 2,
     world: { width: r(scene.world.width), height: r(scene.world.height) },
     playerStart: { x: r(scene.playerStart.x), y: r(scene.playerStart.y) },
     ground: { sprite: scene.ground.sprite, height: r(scene.ground.height), tileWidth: r(scene.ground.tileWidth) },
+    camera: {
+      baseZoom: Math.round(Math.max(0.25, Math.min(3, Number(scene.camera.baseZoom) || 1)) * 100) / 100,
+      zoomZones: scene.camera.zoomZones.map(z => ({
+        x:r(z.x), y:r(z.y), width:r(z.width), height:r(z.height),
+        zoom: Math.round(Math.max(0.25, Math.min(3, Number(z.zoom) || 1)) * 100) / 100,
+      })),
+    },
     props: scene.props.map(p => {
       // A prop dropped before its image finished loading can still have 0 size.
       // Resolve to the image's natural size now (or a 32px default), so the
       // saved scene always has real dimensions the game can draw.
       let w = p.width, h = p.height;
       if (!w || !h) { const im = getImg(p.src); w = im.naturalWidth || 32; h = im.naturalHeight || 32; }
-      return { src: p.src, x: r(p.x), y: r(p.y), width: r(w), height: r(h) };
+      return { src: p.src, x: r(p.x), y: r(p.y), width: r(w), height: r(h), ...(p.groupId ? { groupId:p.groupId } : {}) };
     }),
-    hitboxes: scene.hitboxes.map(b => ({ x: r(b.x), y: r(b.y), width: r(b.width), height: r(b.height) })),
-    coins: scene.coins.map(c => ({ x: r(c.x), y: r(c.y) })),
+    hitboxes: scene.hitboxes.map(b => ({ x: r(b.x), y: r(b.y), width: r(b.width), height: r(b.height), ...(b.groupId ? { groupId:b.groupId } : {}) })),
+    coins: scene.coins.map(c => ({ x: r(c.x), y: r(c.y), ...(c.groupId ? { groupId:c.groupId } : {}) })),
   };
 }
 
@@ -1344,7 +1581,7 @@ async function loadShop(announce) {
 
 async function loadAll(announce) {
   const results = await Promise.all([loadScene(false), loadShop(false)]);
-  selection = null;
+  clearSelection();
   renderInspector();
   if (announce) setStatus('scene + shop reloaded ✓', 'ok');
   return results;
@@ -1369,10 +1606,15 @@ async function loadScene(announce) {
       sprite: s.ground.sprite || '/assets/obstacles/grass.png',
       height: +s.ground.height || 14, tileWidth: +s.ground.tileWidth || 40,
     };
-    scene.props = Array.isArray(s.props) ? s.props.map(p => ({ src: p.src, x: +p.x, y: +p.y, width: +p.width || 0, height: +p.height || 0 })) : [];
-    scene.hitboxes = Array.isArray(s.hitboxes) ? s.hitboxes.map(b => ({ x: +b.x, y: +b.y, width: +b.width || 20, height: +b.height || 20 })) : [];
-    scene.coins = Array.isArray(s.coins) ? s.coins.map(c => ({ x: +c.x, y: +c.y })) : [];
-    selection = null;
+    const cam = s.camera && typeof s.camera === 'object' ? s.camera : {};
+    scene.camera.baseZoom = Math.max(0.25, Math.min(3, Number(cam.baseZoom) || 1));
+    scene.camera.zoomZones = Array.isArray(cam.zoomZones) ? cam.zoomZones
+      .filter(z => z && Number.isFinite(Number(z.x)) && Number.isFinite(Number(z.y)))
+      .map(z => ({ x:+z.x, y:+z.y, width:+z.width || 200, height:+z.height || 150, zoom:Math.max(0.25, Math.min(3, Number(z.zoom) || 1)) })) : [];
+    scene.props = Array.isArray(s.props) ? s.props.map(p => ({ src: p.src, x: +p.x, y: +p.y, width: +p.width || 0, height: +p.height || 0, ...(p.groupId ? {groupId:String(p.groupId)} : {}) })) : [];
+    scene.hitboxes = Array.isArray(s.hitboxes) ? s.hitboxes.map(b => ({ x: +b.x, y: +b.y, width: +b.width || 20, height: +b.height || 20, ...(b.groupId ? {groupId:String(b.groupId)} : {}) })) : [];
+    scene.coins = Array.isArray(s.coins) ? s.coins.map(c => ({ x: +c.x, y: +c.y, ...(c.groupId ? {groupId:String(c.groupId)} : {}) })) : [];
+    clearSelection();
     renderInspector();
     if (announce) setStatus('reloaded ✓', 'ok');
     return true;
@@ -1391,33 +1633,28 @@ window.addEventListener('keydown', (e) => {
   if (e.key === ' ' && !typing) { spaceDown = true; if (!drag) canvas.style.cursor = 'grab'; }
   if (typing) return;
 
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') { e.preventDefault(); e.shiftKey ? ungroupSelection() : groupSelection(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') { e.preventDefault(); copySelection(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') { e.preventDefault(); pasteSelection(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
     e.preventDefault();
-    if (selection && selection.type !== 'playerStart') {
-      copySelection();
-      pasteSelection();
-    }
+    if (selectedRefs().some(r => r.type !== 'playerStart')) { copySelection(); pasteSelection(); }
     return;
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveScene(); return; }
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelection(); return; }
-  if (e.key === 'Escape') { if (shopSettingsOverlay.classList.contains('open')) { closeShopSettings(); return; } selection = null; activeAsset = null; document.querySelectorAll('.file-row.active').forEach(t => t.classList.remove('active')); renderInspector(); return; }
+  if (e.key === 'Escape') { if (shopSettingsOverlay.classList.contains('open')) { closeShopSettings(); return; } clearSelection(); activeAsset = null; document.querySelectorAll('.file-row.active').forEach(t => t.classList.remove('active')); renderInspector(); return; }
 
-  const map = { v: 'select', b: 'hitbox', c: 'coin', p: 'playerStart', h: 'pan' };
+  const map = { v: 'select', b: 'hitbox', z: 'zoomZone', c: 'coin', p: 'playerStart', h: 'pan' };
   if (map[e.key.toLowerCase()]) { tool = map[e.key.toLowerCase()]; syncToolButtons(); return; }
 
-  // Arrow-key nudge of the selection.
-  if (selection && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+  // Arrow-key nudge moves the entire selection/group together.
+  if (selectedRefs().length && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
     e.preventDefault();
     const step = e.shiftKey ? 10 : 1;
     const dx = (e.key === 'ArrowRight' ? step : 0) - (e.key === 'ArrowLeft' ? step : 0);
     const dy = (e.key === 'ArrowDown' ? step : 0) - (e.key === 'ArrowUp' ? step : 0);
-    if (selection.type === 'coin') { scene.coins[selection.index].x += dx; scene.coins[selection.index].y += dy; }
-    else if (selection.type === 'playerStart') { scene.playerStart.x += dx; scene.playerStart.y += dy; }
-    else { const r = rectOf(selection.type, selection.index); r.x += dx; r.y += dy; }
-    renderInspector();
+    moveSelectedBy(dx, dy); renderInspector();
   }
 });
 window.addEventListener('keyup', (e) => {

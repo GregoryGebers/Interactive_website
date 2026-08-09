@@ -95,6 +95,33 @@ def validate_scene(scene):
     for key in ("props", "hitboxes", "coins"):
         if key in scene and not isinstance(scene[key], list):
             return f"scene.{key} must be an array."
+
+    camera = scene.get("camera")
+    if camera is not None:
+        if not isinstance(camera, dict):
+            return "scene.camera must be an object."
+        try:
+            base_zoom = float(camera.get("baseZoom", 1))
+            if not 0.25 <= base_zoom <= 3:
+                return "scene.camera.baseZoom must be between 0.25 and 3."
+        except (TypeError, ValueError):
+            return "scene.camera.baseZoom must be numeric."
+        zones = camera.get("zoomZones", [])
+        if not isinstance(zones, list):
+            return "scene.camera.zoomZones must be an array."
+        for i, zone in enumerate(zones):
+            if not isinstance(zone, dict):
+                return f"scene.camera.zoomZones[{i}] must be an object."
+            try:
+                x = float(zone["x"]); y = float(zone["y"])
+                width = float(zone["width"]); height = float(zone["height"])
+                zoom = float(zone["zoom"])
+            except (KeyError, TypeError, ValueError):
+                return f"scene.camera.zoomZones[{i}] must have numeric x, y, width, height and zoom."
+            if width <= 0 or height <= 0:
+                return f"scene.camera.zoomZones[{i}] width/height must be positive."
+            if not 0.25 <= zoom <= 3:
+                return f"scene.camera.zoomZones[{i}].zoom must be between 0.25 and 3."
     return None
 
 
