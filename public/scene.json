@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "world": {
     "width": 3000,
     "height": 500
@@ -12,6 +12,18 @@
     "sprite": "/assets/obstacles/grass.png",
     "height": 1,
     "tileWidth": 40
+  },
+  "camera": {
+    "baseZoom": 1.5,
+    "zoomZones": [
+      {
+        "x": 1260,
+        "y": 160,
+        "width": 1090,
+        "height": 340,
+        "zoom": 2
+      }
+    ]
   },
   "props": [
     {
@@ -1437,7 +1449,7 @@
     },
     {
       "src": "/assets/edit_assets/Houses/House_tower.png",
-      "x": 1740,
+      "x": 1750,
       "y": 280,
       "width": 90,
       "height": 200
