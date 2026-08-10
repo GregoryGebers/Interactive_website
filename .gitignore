@@ -1,0 +1,11 @@
+node_modules/
+npm-debug.log*
+*.log
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+
+# Local env — NEVER commit secrets (PLAYER_STATE_SECRET, SE_JWT_TOKEN_*, etc.)
+.env
+.env.*
