@@ -21,26 +21,31 @@
   // "frameRow" (facing direction) from the network, and fall back to idle if
   // we haven't heard from them in a while (covers the edge case of someone
   // backgrounding their tab mid-run — otherwise they'd run in place forever).
-  const FRAME_INTERVAL = 0.1; // seconds per animation frame, matches viewer.html
   const STALE_MS = 600; // no update in this long -> treat as idle
 
+  // Drive the duck clip from the emote the game broadcasts. Trust the sender's
+  // frameIndex while fresh; self-animate an idle loop if their tab went quiet.
   function updatePlayerAnimation(p, deltaTime) {
-    const stale = (performance.now() - (p.lastUpdateAt || 0)) > STALE_MS;
-    const emote = stale ? 'idle' : (p.emote || 'idle');
-    const frameCount = emote === 'run' ? 8 : 6;
-    const frameRow = emote === 'run' ? (p.frameRow ?? 3) : 0;
+    const now = performance.now();
+    const stale = (now - (p.lastUpdateAt || 0)) > STALE_MS;
+    let clip = stale ? 'idle' : mapDuckClip(p.emote);
+    if (p.swingStartAt && now - p.swingStartAt < SWING_DURATION_MS) clip = 'punch';
+    const meta = DUCK_ANIM[clip] || DUCK_ANIM.idle;
+    const frozen = now0() < (p.hitStopUntil || 0);
 
-    const visuallyFrozen = now0() < (p.hitStopUntil || 0);
-    if (!visuallyFrozen) {
+    if (stale && !frozen) {
       p.localFrameTimer = (p.localFrameTimer || 0) + deltaTime;
-      if (p.localFrameTimer >= FRAME_INTERVAL) {
-        p.localFrameTimer -= FRAME_INTERVAL;
-        p.localFrameIndex = ((p.localFrameIndex || 0) + 1) % frameCount;
+      const interval = 1 / (meta.fps || 8);
+      if (p.localFrameTimer >= interval) {
+        p.localFrameTimer -= interval;
+        p.localFrameIndex = ((p.localFrameIndex || 0) + 1) % meta.frames;
       }
+      p.displayFrameIndex = p.localFrameIndex % meta.frames;
+    } else if (!frozen) {
+      p.displayFrameIndex = Math.min(meta.frames - 1, Math.max(0, p.frameIndex || 0));
     }
-    if (!(p.localFrameIndex < frameCount)) p.localFrameIndex = 0; // guard if frameCount just shrank
 
-    return { emote, frameRow, frameIndex: p.localFrameIndex };
+    return { clip, facing: (Number(p.facing) === -1 ? -1 : 1), frameIndex: p.displayFrameIndex || 0 };
   }
 
   // ---- Bat swing rendering -------------------------------------------------

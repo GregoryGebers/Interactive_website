@@ -34,6 +34,7 @@ function startAfkSweep(io) {
         delete gameState.lastMoveAt[id];
         delete gameState.lastChatAt[id];
         delete gameState.lastSwingAt[id];
+        delete gameState.invulnerableUntil[id];
         io.emit('remove-player', id);
         io.to(id).emit('afk-removed');
         console.log(`[afk] removed ${id} after ${Math.round((now - last) / 1000)}s of inactivity`);

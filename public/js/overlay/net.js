@@ -1,7 +1,10 @@
-  //"https://interactive-website-9620.onrender.com/socket.io/socket.io.js"
-  const socket = io("https://interactive-website-9620.onrender.com");
+  // Connect to whatever server is actually serving this overlay page (the same
+  // origin as the game), so it works locally and in production alike instead of
+  // always pointing at one hardcoded deployment.
+  const socket = io(window.location.origin);
   const canvas = document.getElementById('overlay');
   const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false; // crisp pixel-art scaling on the stream too
   const players = {};
 
   const now0 = () => performance.now();

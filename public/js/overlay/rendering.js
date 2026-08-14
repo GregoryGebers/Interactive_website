@@ -25,34 +25,21 @@
         high_user = p.username;
       }
       if (p.invisible) continue; // invisible players are hidden on the overlay too
-      const fw = 64, fh = 64;
       const anim = updatePlayerAnimation(p, deltaTime);
-      const img = skinSheet(p.skin, anim.emote);
+      const img = duckSprite(anim.clip, p.color, p.beakColor);
       const spriteScale = overlaySpriteScale(p, now0());
+      // Duck faces RIGHT natively; flip for left. -27 y offset + feet pivot
+      // seat the duck on the ground, matching viewer.html.
+      const facingSign = (anim.facing === 1) ? 1 : -1;
       drawOverlaySpriteFrame(
-        img, anim.frameIndex, anim.frameRow,
-        p.renderX - 20, p.renderY - 20,
-        { whiteFlash: now0() < (p.hitFlashUntil || 0), scaleX: spriteScale.x, scaleY: spriteScale.y }
+        img, anim.frameIndex, 0,
+        p.renderX - 20, p.renderY - 27,
+        { whiteFlash: now0() < (p.hitFlashUntil || 0), scaleX: spriteScale.x * facingSign, scaleY: spriteScale.y, pivotY: 47 }
       );
     }
 
-    // Bat swings go over the sprites (the bat passes in front of the
-    // character), still in the same scaled world space. Each swing plays
-    // for SWING_DURATION_MS from when its event arrived.
-    const swingNowMs = performance.now();
-    for (const id in players) {
-      const p = players[id];
-      if (p.invisible) continue;
-      if (p.swingStartAt && swingNowMs - p.swingStartAt < SWING_DURATION_MS) {
-        drawBatSwing(
-          ctx,
-          p.renderX + 10, // sprite center (matches the name-label offset)
-          p.renderY + 10,
-          p.swingDir || 1,
-          (swingNowMs - p.swingStartAt) / SWING_DURATION_MS
-        );
-      }
-    }
+    // Attacks are a punch BODY pose (the 'punch' clip) now, not a separate bat
+    // overlay, so there is nothing extra to draw here for swings.
 
     // Impact particles, max-tier shockwaves and coin pops sit over sprites
     // and weapons, but still in stable world space (no stream camera shake).

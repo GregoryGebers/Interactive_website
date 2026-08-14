@@ -39,8 +39,8 @@
     function emitMoveNow() {
       socket.emit('move', {
         x: player.x, y: player.y,
-        frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow: animations.frameRow,
-        username: player.username, color: player.color, emote: player.action, score: player.score, skin: player.skin, invisible: player.invisible,
+        frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow: animations.frameRow, facing: player.facing,
+        username: player.username, color: player.color, beakColor: player.beakColor, emote: player.action, score: player.score, skin: player.skin, invisible: player.invisible,
       });
     }
 

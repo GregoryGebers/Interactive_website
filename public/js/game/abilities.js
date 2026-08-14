@@ -71,13 +71,6 @@
       emitMoveNow();
     }
 
-    // Reset the frame cycle only when the pose (frame count or facing row)
-    // actually changes. The sprite SHEET is chosen at draw time from the
-    // player's equipped skin, so this no longer touches the image itself.
-    function setPose(frameCount, frameRow) {
-      if (animations.frameCount !== frameCount || animations.frameRow !== frameRow) {
-        animations.frameCount = frameCount;
-        animations.frameRow = frameRow;
-        animations.currentFrame = 0;
-      }
-    }
+    // Local player animation is driven by the duck state machine in duck.js
+    // (setClip / tickPlayerAnim / updatePlayerClip). The old setPose() pose
+    // switch is gone.

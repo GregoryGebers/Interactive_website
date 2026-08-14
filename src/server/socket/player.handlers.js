@@ -32,6 +32,9 @@ function registerPlayerHandlers(socket, { io }) {
       const color = data && typeof data.color === 'string' && HEX_COLOR_RE.test(data.color)
         ? data.color
         : DEFAULT_USERNAME_COLOR;
+      const beakColor = data && typeof data.beakColor === 'string' && HEX_COLOR_RE.test(data.beakColor)
+        ? data.beakColor
+        : null;
 
       const saved = normalizePersistentState(socket.data.persistentState);
       const owned = new Set(saved.cosmetics);
@@ -45,9 +48,9 @@ function registerPlayerHandlers(socket, { io }) {
       }
 
       gameState.players[socket.id] = {
-        x: 100, y: 100, emote: 'idle',
+        x: 100, y: 100, emote: 'idle', facing: 1,
         score: saved.coins,
-        username, color, skin
+        username, color, beakColor, skin
       };
       gameState.playerUpgrades[socket.id] = { ...saved.upgrades };
       gameState.playerCosmetics[socket.id] = owned;
@@ -66,6 +69,7 @@ function registerPlayerHandlers(socket, { io }) {
     delete gameState.lastMoveAt[socket.id];
     delete gameState.lastChatAt[socket.id];
     delete gameState.lastSwingAt[socket.id];
+    delete gameState.invulnerableUntil[socket.id];
     delete gameState.lastPlayerFxAt[socket.id];
 
     if (!gameState.players[socket.id]) return; // never joined — nothing to clean up

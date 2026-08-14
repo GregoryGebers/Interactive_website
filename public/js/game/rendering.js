@@ -4,6 +4,11 @@
       const sxScale = options.scaleX == null ? 1 : options.scaleX;
       const syScale = options.scaleY == null ? 1 : options.scaleY;
       const flash = options.whiteFlash === true;
+      // Scale pivot inside the 64x64 frame. Defaults to the center, but callers
+      // can pivot at the feet (pivotY≈47 for the duck) so squash/stretch keeps
+      // the feet planted on the ground instead of lifting them (the "float").
+      const pivotX = options.pivotX == null ? fw / 2 : options.pivotX;
+      const pivotY = options.pivotY == null ? fh / 2 : options.pivotY;
 
       let source = image;
       let srcX = (frameIndex || 0) * fw, srcY = (frameRow || 0) * fh;
@@ -22,9 +27,9 @@
 
       context.save();
       context.globalAlpha *= alpha;
-      context.translate(x + fw / 2, y + fh / 2);
+      context.translate(x + pivotX, y + pivotY);
       context.scale(sxScale, syScale);
-      context.drawImage(source, srcX, srcY, fw, fh, -fw / 2, -fh / 2, fw, fh);
+      context.drawImage(source, srcX, srcY, fw, fh, -pivotX, -pivotY, fw, fh);
       context.restore();
     }
 
@@ -126,16 +131,19 @@
     function drawOtherPlayer(p) {
       if (p.invisible) return; // an invisible player is fully hidden to others
       const fw = 64, fh = 64;
-      const sprite = skinSheet(p.skin, p.displayEmote);
+      const sprite = duckSprite(p.displayClip || 'idle', p.color, p.beakColor);
       const rx = p.renderX ?? p.x;
       const ry = p.renderY ?? p.y;
 
       const now = performance.now();
       const remoteScale = remoteSpriteScale(p, now);
+      // Duck art faces RIGHT natively; flip when this player faces left. The
+      // -27 y offset seats the duck's feet (frame row ~47) on the ground line.
+      const facingSign = (p.displayFacing === 1) ? 1 : -1;
       drawSpriteFrame(
-        playObj, sprite, p.displayFrameIndex || 0, p.displayFrameRow || 0,
-        rx - 20, ry - 20,
-        { whiteFlash: now < (p.hitFlashUntil || 0), scaleX: remoteScale.x, scaleY: remoteScale.y }
+        playObj, sprite, p.displayFrameIndex || 0, 0,
+        rx - 20, ry - 27,
+        { whiteFlash: now < (p.hitFlashUntil || 0), scaleX: remoteScale.x * facingSign, scaleY: remoteScale.y, pivotY: 47 }
       );
 
       playObj.font = '16px Arial';
@@ -177,13 +185,17 @@
       // nothing (their client skips drawing you — see drawOtherPlayer).
       const nowSpriteFx = performance.now();
       const localScale = localSpriteScale(nowSpriteFx);
+      // Duck art faces RIGHT natively; flip when the player faces left. The
+      // -27 y offset seats the duck's feet (frame row ~47) on the ground line.
+      const localFacingSign = (player.facing === 1) ? 1 : -1;
       drawSpriteFrame(
-        playObj, skinSheet(player.skin, player.action), animations.currentFrame, animations.frameRow,
-        player.x - 20, player.y - 20,
+        playObj, duckSprite(animations.clip, player.color, player.beakColor), animations.currentFrame, 0,
+        player.x - 20, player.y - 27,
         {
           alpha: player.invisible ? 0.5 : 1,
           whiteFlash: nowSpriteFx < localHitFlashUntil,
-          scaleX: localScale.x, scaleY: localScale.y,
+          scaleX: localScale.x * localFacingSign, scaleY: localScale.y,
+          pivotY: 47,
         }
       );
 
@@ -194,33 +206,9 @@
       playObj.fillText(player.username, player.x + player.width/2, player.y - 5);
       playObj.globalAlpha = 1;
 
-      // Bat swings: drawn over sprites (the bat passes in front of the
-      // character) but under chat bubbles. Each swing renders for
-      // SWING_DURATION_MS after it started, driven by its own clock, so
-      // everyone sees the same bottom-to-top swipe regardless of frame rate.
-      const swingNow = performance.now();
-      for (const id in otherPlayers) {
-        const p = otherPlayers[id];
-        if (p.invisible) continue;
-        if (p.swingStartAt && swingNow - p.swingStartAt < SWING_DURATION_MS) {
-          drawBatSwing(
-            playObj,
-            (p.renderX ?? p.x) + 10,  // other-player sprite center (matches name offset)
-            (p.renderY ?? p.y) + 10,
-            p.swingDir || 1,
-            (swingNow - p.swingStartAt) / SWING_DURATION_MS
-          );
-        }
-      }
-      if (player.swingStartAt && swingNow - player.swingStartAt < SWING_DURATION_MS) {
-        drawBatSwing(
-          playObj,
-          player.x + player.width / 2,
-          player.y + player.height / 2,
-          player.facing,
-          (swingNow - player.swingStartAt) / SWING_DURATION_MS
-        );
-      }
+      // Attacks are now a punch BODY pose (the 'punch' clip) chosen by the
+      // animation state machines for both the local player and remotes — there
+      // is no separate weapon overlay to draw here anymore.
 
       // Dust, impact pixels, rings, dash streaks and the coin pop sit above
       // characters/weapons but below chat bubbles.
@@ -278,12 +266,9 @@
       const now = performance.now();
       if (now - lastMoveEmit >= MOVE_EMIT_INTERVAL_MS) {
         lastMoveEmit = now;
-        socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, username:player.username, color:player.color, emote: player.action, score :player.score, skin: player.skin, invisible: player.invisible });
+        socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, facing: player.facing, username:player.username, color:player.color, beakColor: player.beakColor, emote: player.action, score :player.score, skin: player.skin, invisible: player.invisible });
       }
     }
 
-    // WASD works alongside the arrow keys — checked by lowercasing so both
-    // "a" and "A" (e.g. with Caps Lock/Shift) count.
-    const RIGHT_KEYS = new Set(["ArrowRight", "d"]);
-    const LEFT_KEYS = new Set(["ArrowLeft", "a"]);
-    const JUMP_KEYS = new Set(["ArrowUp", "w"]);
+    // Movement/ability keys are defined by the rebindable keyBindings map in
+    // keybindings.js and read via bindingHasKey() in input.js.

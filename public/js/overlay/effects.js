@@ -175,6 +175,7 @@
   const overlaySpriteFxCtx=overlaySpriteFxCanvas.getContext('2d');
   function drawOverlaySpriteFrame(image,frameIndex,frameRow,x,y,opts={}) {
     const fw=64,fh=64, sxScale=opts.scaleX??1, syScale=opts.scaleY??1;
+    const pivotX=opts.pivotX==null?fw/2:opts.pivotX, pivotY=opts.pivotY==null?fh/2:opts.pivotY;
     let source=image,srcX=(frameIndex||0)*fw,srcY=(frameRow||0)*fh;
     if (opts.whiteFlash) {
       overlaySpriteFxCtx.setTransform(1,0,0,1,0,0); overlaySpriteFxCtx.clearRect(0,0,fw,fh);
@@ -183,8 +184,8 @@
       overlaySpriteFxCtx.globalCompositeOperation='source-atop'; overlaySpriteFxCtx.fillStyle='#fff'; overlaySpriteFxCtx.fillRect(0,0,fw,fh);
       overlaySpriteFxCtx.globalCompositeOperation='source-over'; source=overlaySpriteFxCanvas; srcX=0; srcY=0;
     }
-    ctx.save(); ctx.translate(x+fw/2,y+fh/2); ctx.scale(sxScale,syScale);
-    ctx.drawImage(source,srcX,srcY,fw,fh,-fw/2,-fh/2,fw,fh); ctx.restore();
+    ctx.save(); ctx.translate(x+pivotX,y+pivotY); ctx.scale(sxScale,syScale);
+    ctx.drawImage(source,srcX,srcY,fw,fh,-pivotX,-pivotY,fw,fh); ctx.restore();
   }
   function overlaySpriteScale(p,now=now0()) {
     if (now<(p.hitSquashUntil||0)) return {x:.72,y:1.18};

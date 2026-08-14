@@ -47,6 +47,11 @@
       z-index: 5; /* above twitch */
       background: transparent;
       display: block;
+      /* Crisp pixel-art scaling — no bilinear blur when the view is zoomed.
+         Listed weakest-first so a browser supporting `pixelated` uses it. */
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: crisp-edges;
+      image-rendering: pixelated;
     }
 
     #loginOverlay {
@@ -304,12 +309,86 @@
       box-shadow: 3px 3px 0 var(--ink);
     }
 
-    #twitchControls {
+    /* The stream toggle now lives inside the options panel, so it flows as a
+       normal block (full width) instead of being absolutely positioned. */
+    #twitchControls { display: block; width: 100%; }
+
+    /* ---- Options button + panel (top-right) -------------------------------- */
+    #optionsBtn {
       position: absolute;
-      top: 60px; /* below #connectionStatus, which also sits top-right */
+      top: 14px;
       right: 14px;
-      z-index: 20;
+      z-index: 60;
     }
+    #optionsPanel {
+      position: absolute;
+      top: 56px;
+      right: 14px;
+      z-index: 60;
+      width: 300px;
+      max-width: calc(100vw - 28px);
+      max-height: calc(100vh - 70px);
+      overflow-y: auto;
+      background: var(--panel, #223);
+      border: 2px solid var(--ink, #16241a);
+      box-shadow: 4px 4px 0 var(--ink, #16241a);
+      padding: 12px;
+      color: var(--paper, #f3f7ee);
+      font-family: 'Inter', Arial, sans-serif;
+      font-size: 13px;
+    }
+    #optionsPanel .options-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    #optionsPanel .options-title {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 12px;
+      color: var(--gold, #ffc145);
+    }
+    #optionsPanel .options-section {
+      border-top: 2px solid rgba(255, 255, 255, 0.12);
+      padding: 10px 0;
+    }
+    #optionsPanel .options-section:first-of-type { border-top: none; }
+    #optionsPanel h4 {
+      margin: 0 0 8px;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 9px;
+      letter-spacing: 0.5px;
+      color: var(--gold, #ffc145);
+    }
+    #optionsPanel .options-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin: 6px 0;
+    }
+    #optionsPanel .options-info { opacity: 0.8; margin: 4px 0 8px; font-size: 12px; }
+    #optionsPanel .options-hint { opacity: 0.7; font-size: 11px; margin: 8px 0; }
+    #optionsPanel .opt-color {
+      width: 42px;
+      height: 28px;
+      padding: 0;
+      border: 2px solid var(--ink, #16241a);
+      background: var(--panel-light, #334);
+      cursor: pointer;
+    }
+    #optionsPanel .opt-color::-webkit-color-swatch-wrapper { padding: 2px; }
+    #optionsPanel .opt-color::-webkit-color-swatch { border: none; }
+    #optionsPanel .options-bindings { margin: 8px 0; }
+    #optionsPanel .binding-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      align-items: center;
+      gap: 6px;
+      margin: 5px 0;
+    }
+    #optionsPanel .binding-label { font-size: 12px; }
+    #optionsPanel .binding-btn { min-width: 56px; text-align: center; }
 
     #usernameColor {
       width: 40px;

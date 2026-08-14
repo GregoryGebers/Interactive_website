@@ -155,10 +155,12 @@
 
     function triggerDashFx() {
       // Horizontal smoke puff BEHIND the dash direction, centered on the
-      // player. Flip so the smoke tail points back the way you came.
+      // player. Flip so the smoke tail points back the way you came. The puff is
+      // wide, so it's pushed well behind (DASH_SMOKE_BACK) to keep its leading
+      // edge at the player's heels instead of clipping in front of them.
       const cx = player.x + player.width / 2, cy = player.y + player.height / 2;
       spawnFxSprite(EFFECT_DASH,
-        cx - EFFECT_DASH.w / 2 - dashDir * 18,
+        cx - EFFECT_DASH.w / 2 - dashDir * 42,
         cy - EFFECT_DASH.h / 2,
         { flipX: dashDir > 0 });
       emitSharedFx('dash', { dir: dashDir });

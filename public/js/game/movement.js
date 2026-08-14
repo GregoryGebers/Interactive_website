@@ -31,14 +31,15 @@
     const DASH_COOLDOWN = 0.45;    // min time between dashes
 
     // Held-key input + timers driving the physics above.
-    let inputLeft = false, inputRight = false, jumpHeld = false, shiftHeld = false, ctrlHeld = false;
+    let inputLeft = false, inputRight = false, jumpHeld = false, shiftHeld = false, ctrlHeld = false, spaceHeld = false;
     let coyoteTimer = 0, jumpBufferTimer = 0;
     let isDashing = false, dashDir = 1, dashTimer = 0, dashCooldownTimer = 0, canDash = true;
     let airJumps = 0;   // remaining mid-air jumps (from the double-jump upgrade)
     let controlLockTimer = 0; // seconds remaining after being hit by a bat/sword
+    let punchHoldStartedAt = 0; // performance.now() when the current Space-hold began
 
     function clearCombatInputs() {
-      inputLeft = inputRight = jumpHeld = shiftHeld = ctrlHeld = false;
+      inputLeft = inputRight = jumpHeld = shiftHeld = ctrlHeld = spaceHeld = false;
       jumpBufferTimer = 0;
       isDashing = false;
     }

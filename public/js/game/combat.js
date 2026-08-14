@@ -5,8 +5,9 @@
     // degrees with ~3/4 of a max jump's force. The client cooldown here is
     // just responsiveness — the server enforces its own copy, so editing
     // this number locally doesn't let anyone spam hits.
-    const SWING_COOLDOWN_MS = 2000;
-    const SWING_DURATION_MS = 250; // how long the visual swipe takes
+    const SWING_COOLDOWN_MS = 20;  // very short: holding Space punches continuously
+    const SWING_DURATION_MS = 250; // how long the punch pose stays up after a hit
+    const PUNCH_MAX_MS = 1000;     // a single Space-hold punches for at most this long
     let lastSwingTriedAt = -Infinity;
 
     function trySwing() {
@@ -82,26 +83,7 @@
       clearCombatInputs();
     });
 
-    // Draws one bat mid-swing, rotated around the character's center (the
-    // grip). progress 0 -> bat low behind-forward, progress 1 -> pointing
-    // up-forward: a bottom-to-top swipe on the facing side. scale(dir, 1)
-    // mirrors the whole arc for left-facing swings.
-    const BAT_DRAW_W = 9;
-    const BAT_DRAW_H = 26;
-    const SWING_START_ANGLE = 2.4;   // radians clockwise from straight-up (~137deg, low)
-    const SWING_END_ANGLE = -0.35;   // slightly past vertical (~-20deg, high)
-
-    function drawBatSwing(ctx, cx, cy, dir, progress) {
-      if (!batImg.complete || !batImg.naturalWidth) return; // image not loaded yet
-      const t = Math.min(Math.max(progress, 0), 1);
-      // Ease-out so the swipe starts fast and finishes soft, like a real swing.
-      const eased = 1 - (1 - t) * (1 - t);
-      const angle = SWING_START_ANGLE + (SWING_END_ANGLE - SWING_START_ANGLE) * eased;
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.scale(dir, 1);
-      ctx.rotate(angle);
-      // Grip at the pivot, barrel extending "up" in local space.
-      ctx.drawImage(batImg, -BAT_DRAW_W / 2, -BAT_DRAW_H, BAT_DRAW_W, BAT_DRAW_H);
-      ctx.restore();
-    }
+    // The attack no longer draws a bat. `player.swingStartAt` (and each
+    // remote's swingStartAt) now drives the 'punch' duck clip in the animation
+    // state machines (duck.js / players.js). Hit detection, cooldown and
+    // knockback are unchanged and still server-authoritative.

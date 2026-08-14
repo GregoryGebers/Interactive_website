@@ -49,14 +49,20 @@ const PLAYER_FX_MIN_INTERVAL_MS = {
   invisibility: 80,
 };
 
-// ---- Bat swing / combat -----------------------------------------------------
+// ---- Punch / combat ---------------------------------------------------------
 // Hit detection and cooldown run on the SERVER using the positions it already
-// tracks, so a modified client can't claim hits across the map. The client's
-// own 2s cooldown is just UX; SWING_COOLDOWN_MS is the real gate.
-const SWING_COOLDOWN_MS = 2000;
-// Server-side check runs slightly under the client's 2000ms so a legit swing
-// arriving a few ms "early" (timer drift, network jitter) isn't dropped.
-const SWING_COOLDOWN_TOLERANCE_MS = 100;
+// tracks, so a modified client can't claim hits across the map. This cooldown
+// is the real gate: after landing a hit, an attacker can't land another for
+// this long, which is what makes a freshly-hit target briefly "invulnerable".
+// Kept short so continuous punching lands rapid (but not every-frame) hits.
+// Small attacker-side gate, mostly anti-spam. The real "you can't be hit again
+// right away" rule is PLAYER_INVULN_MS below, applied per target.
+const SWING_COOLDOWN_MS = 150;
+const SWING_COOLDOWN_TOLERANCE_MS = 50;
+// After a player is hit, they can't be hit again for this long. One press lands
+// one hit per target; hitting the same player again needs a fresh press AFTER
+// this window elapses.
+const PLAYER_INVULN_MS = 500;
 const SWING_RADIUS = 60;        // world units around the sweet spot
 const SWING_REACH_OFFSET = 20;  // sweet spot sits slightly in front of the swinger
 // Max jump impulse in viewer.html is Yforce(0.5)*180 + 200 = 290. The knock is
@@ -88,6 +94,7 @@ module.exports = {
   PLAYER_FX_MIN_INTERVAL_MS,
   SWING_COOLDOWN_MS,
   SWING_COOLDOWN_TOLERANCE_MS,
+  PLAYER_INVULN_MS,
   SWING_RADIUS,
   SWING_REACH_OFFSET,
   MAX_JUMP_IMPULSE,

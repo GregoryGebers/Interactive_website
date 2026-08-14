@@ -92,7 +92,7 @@
       if (!hasJoined) return;
       // Coins/inventory/upgrades/equipped skin come from the signed server
       // cookie; the browser only supplies presentation identity.
-      socket.emit('join', { username: player.username, color: player.color });
+      socket.emit('join', { username: player.username, color: player.color, beakColor: player.beakColor });
     }
     // Re-join automatically after a reconnect (fires on first connect too,
     // when it's a harmless no-op since hasJoined is still false then).
@@ -104,9 +104,10 @@
     // focus back to the canvas. Exposed on window so the account/guest login UI
     // (auth.js) can start play from any of its buttons — guest GO, or the
     // signed-in PLAY button that reuses the account's saved name and color.
-    function beginPlay(name, color) {
+    function beginPlay(name, color, beakColor) {
       player.username = (name && String(name).trim()) || 'Player1';
       player.color = color || '#1e3fff';
+      if (beakColor) player.beakColor = beakColor;
       hasJoined = true;
       sendJoin();
       document.getElementById('loginMessage').style.display = 'none';
@@ -120,9 +121,14 @@
       const input = document.getElementById('usernameInput');
       const button = document.getElementById('usernameBtn');
       const colorInput = document.getElementById('usernameColor');
+      const beakInput = document.getElementById('usernameBeakColor');
 
       button.addEventListener('click', () => {
-        beginPlay(input.value.trim() || 'Player1', colorInput.value || '#1e3fff');
+        beginPlay(
+          input.value.trim() || 'Player1',
+          colorInput.value || '#1e3fff',
+          beakInput ? beakInput.value : undefined
+        );
       });
     }
 
@@ -136,9 +142,6 @@
       requestAnimationFrame(gameLoop);
     }
 
-    let frameTimer = 0;
-    let animationStopper = false;
-    const frameInterval = 0.1;
 
     // draw() runs every animation frame (~60/sec). Broadcasting "move" that
     // often per player adds up fast with several people connected. Capping
@@ -155,6 +158,10 @@
     });
     function update(deltaTime) {
 
+      // Controller input (if enabled) is translated into synthetic key events
+      // before we read the input flags below.
+      if (typeof pollGamepad === 'function') pollGamepad();
+
       updateOtherPlayersInterpolation(deltaTime);
       updateOtherPlayersAnimation(deltaTime);
       updateVisualEffects(deltaTime);
@@ -170,11 +177,8 @@
         return;
       }
 
-      frameTimer += deltaTime;
-      if (frameTimer >= frameInterval) {
-        animations.currentFrame = (animations.currentFrame + 1) % animations.frameCount;
-        frameTimer = 0;
-      }
+      // Advance the local duck animation (per-clip fps; loops or clamps by clip).
+      tickPlayerAnim(deltaTime);
 
       // ---- Hit-stun / movement (uses last frame's onGround result) ----
       if (controlLockTimer > 0) {
@@ -182,7 +186,17 @@
         clearCombatInputs();
       }
       const controlsEnabled = controlLockTimer <= 0;
-      const moveDir = controlsEnabled ? ((inputRight ? 1 : 0) - (inputLeft ? 1 : 0)) : 0;
+      // Punch pose / movement lock. The HIT itself is emitted once per key-press
+      // (input.js); this only governs the visual pose and the root-in-place.
+      // Holding Space (ground only) keeps refreshing the pose up to PUNCH_MAX_MS;
+      // the pose — and the movement lock — linger SWING_DURATION_MS after each
+      // press/refresh, so even a single tap roots you for its punch.
+      const nowPunch = performance.now();
+      const holdingPunch = spaceHeld && controlsEnabled && player.onGround &&
+        (nowPunch - punchHoldStartedAt) < PUNCH_MAX_MS;
+      if (holdingPunch) player.swingStartAt = nowPunch;
+      const punchPoseActive = player.onGround && (nowPunch - (player.swingStartAt || 0)) < SWING_DURATION_MS;
+      const moveDir = (controlsEnabled && !punchPoseActive) ? ((inputRight ? 1 : 0) - (inputLeft ? 1 : 0)) : 0;
       const grounded = player.onGround;
 
       // Coyote time, dash refresh, and mid-air jumps all reset while we still
@@ -211,6 +225,10 @@
         else if (player.Xv < 0) player.Xv = Math.min(0, player.Xv + decel);
       }
 
+      // Punching hard-stops horizontal motion (and cancels any dash) so you're
+      // rooted in place while throwing punches.
+      if (punchPoseActive) { player.Xv = 0; isDashing = false; }
+
       // ---- Jump: immediate press-to-jump, gated by coyote time + buffer.
       // With the double-jump upgrade, a second press in mid-air jumps again. ----
       if (controlsEnabled && !isDashing && jumpBufferTimer > 0) {
@@ -228,15 +246,12 @@
         }
       }
 
-      // ---- Sprite pose from actual horizontal motion ----
+      // ---- Facing from actual horizontal motion (idle keeps last facing) ----
       if (Math.abs(player.Xv) > 12) {
         player.facing = player.Xv > 0 ? 1 : -1;
-        player.action = "run";
-        setPose(8, player.facing === 1 ? 3 : 2);
-      } else {
-        player.action = "idle";
-        setPose(6, 0);
       }
+      // ---- Pick the duck animation clip from live game state ----
+      updatePlayerClip();
 
       // ---- Invisibility: count down, and break the instant you move ----
       if (invisCooldown > 0) invisCooldown = Math.max(0, invisCooldown - deltaTime);
@@ -416,6 +431,10 @@
         player.onGround = true;
       }
 
+      // Landing edge (any touchdown) briefly plays the duck's land clip.
+      if (!grounded && player.onGround) {
+        landClipUntil = performance.now() + LAND_CLIP_MS;
+      }
       // Only significant airborne impacts get the landing treatment; ordinary
       // hops stay quiet so the effect doesn't become visual noise.
       if (!grounded && player.onGround && downwardImpactSpeed >= BIG_LAND_MIN_SPEED) {

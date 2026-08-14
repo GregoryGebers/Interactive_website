@@ -24,9 +24,12 @@
       enemy3:   { name: 'Enemy III',       enabled: true, cost: 10, ...bodySheets(P_ENEMY, 3) },
     };
 
-    // Lazily loaded sheet pair per skin. "classic" reuses the images the game
-    // already loaded up top so it never re-downloads.
-    const skinSheetCache = { classic: { idle: idleImg, run: runImg } };
+    // Legacy slime skin plumbing. The player character is now the duck
+    // (see duck.js / rendering.js), so skinSheet() is no longer used to draw
+    // anyone — but SKINS/ownedSkins/equippedSkin are still referenced by the
+    // shop and persistence, so the data stays. Cache starts empty; classic is
+    // lazily loaded from its own paths if anything ever calls skinSheet().
+    const skinSheetCache = {};
     function skinSheet(id, action) {
       const key = SKINS[id] ? id : 'classic';
       let sheets = skinSheetCache[key];

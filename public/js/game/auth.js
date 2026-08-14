@@ -51,6 +51,14 @@
       let client = null;
       let account = null; // { username, color } once signed in
 
+      // Small surface for the options panel (options.js): log out and query
+      // whether we're signed into an account vs playing as a guest.
+      window.__slimeAuth = {
+        signOut: async () => { try { if (client) await client.auth.signOut(); } catch (e) {} },
+        isSignedIn: () => !!account,
+        username: () => (account && account.username) || null,
+      };
+
       function setMsg(text, isError) {
         msgEl.textContent = text || '';
         msgEl.style.color = isError ? '#ff6b6b' : 'var(--gold)';

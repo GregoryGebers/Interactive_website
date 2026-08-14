@@ -60,7 +60,7 @@
         const dir = Number(data.dir) === -1 ? -1 : 1;
         const cx = x + 10, cy = y + 10;
         spawnFxSprite(EFFECT_DASH,
-          cx - EFFECT_DASH.w / 2 - dir * 18,
+          cx - EFFECT_DASH.w / 2 - dir * 42,
           cy - EFFECT_DASH.h / 2,
           { flipX: dir > 0 });
       } else if (type === 'jump') {
@@ -107,35 +107,43 @@
       }
     }
 
-    // If another player's tab gets backgrounded, their browser throttles its
-    // requestAnimationFrame loop and stops sending fresh frameIndex values —
-    // without this, they'd freeze mid-animation on our screen too. Animate
-    // everyone's sprite locally instead, only taking emote/frameRow (facing
-    // direction) from the network, and falling back to idle if we haven't
-    // heard from them in a while.
-    const OTHER_PLAYER_FRAME_INTERVAL = 0.1; // seconds per animation frame
+    // Remote ducks: use the frameIndex the sender broadcasts (~30/s) while it's
+    // fresh, and self-animate an idle loop if their tab is backgrounded and the
+    // updates go stale. `emote` now carries the duck CLIP NAME; older clients
+    // that still send 'run' are mapped to 'walk'. A recent swingStartAt forces
+    // the punch clip so remote attacks read even between move packets.
     const OTHER_PLAYER_STALE_MS = 600;
+    function mapRemoteClip(emote) {
+      if (DUCK_ANIM[emote]) return emote;
+      if (emote === 'run') return 'walk';
+      return 'idle';
+    }
 
     function updateOtherPlayersAnimation(deltaTime) {
       const now = performance.now();
       for (const id in otherPlayers) {
         const p = otherPlayers[id];
         const stale = (now - (p.lastUpdateAt || 0)) > OTHER_PLAYER_STALE_MS;
-        const emote = stale ? 'idle' : (p.emote || 'idle');
-        const frameCount = emote === 'run' ? 8 : 6;
+        let clip = stale ? 'idle' : mapRemoteClip(p.emote);
+        if (p.swingStartAt && now - p.swingStartAt < SWING_DURATION_MS) clip = 'punch';
+        const meta = DUCK_ANIM[clip] || DUCK_ANIM.idle;
+        const frozen = now < (p.hitStopUntil || 0);
 
-        const visuallyFrozen = now < (p.hitStopUntil || 0);
-        if (!visuallyFrozen) {
+        if (stale && !frozen) {
+          // Keep a backgrounded player gently looping their idle.
           p.localFrameTimer = (p.localFrameTimer || 0) + deltaTime;
-          if (p.localFrameTimer >= OTHER_PLAYER_FRAME_INTERVAL) {
-            p.localFrameTimer -= OTHER_PLAYER_FRAME_INTERVAL;
-            p.localFrameIndex = ((p.localFrameIndex || 0) + 1) % frameCount;
+          const interval = 1 / (meta.fps || 8);
+          if (p.localFrameTimer >= interval) {
+            p.localFrameTimer -= interval;
+            p.localFrameIndex = ((p.localFrameIndex || 0) + 1) % meta.frames;
           }
+          p.displayFrameIndex = p.localFrameIndex % meta.frames;
+        } else if (!frozen) {
+          // Trust the sender's frame while fresh (clamped to the clip length).
+          p.displayFrameIndex = Math.min(meta.frames - 1, Math.max(0, p.frameIndex || 0));
         }
-        if (!(p.localFrameIndex < frameCount)) p.localFrameIndex = 0;
 
-        p.displayEmote = emote;
-        p.displayFrameRow = emote === 'run' ? (p.frameRow ?? 3) : 0;
-        p.displayFrameIndex = p.localFrameIndex;
+        p.displayClip = clip;
+        p.displayFacing = (Number(p.facing) === -1) ? -1 : 1;
       }
     }

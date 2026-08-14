@@ -63,18 +63,8 @@
       requestAnimationFrame(gameLoop);
     }
 
-    const idleImg = new Image();
-    idleImg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png';
-    idleImg.onload = () => {
-      requestAnimationFrame(gameLoop);
-    };
-
-    const runImg = new Image();
-    runImg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Run/Slime1_Run_body.png';
-    runImg.onload = () => {
-      requestAnimationFrame(gameLoop);
-    }
-
+    // Player character art (the duck) is loaded by duck.js — one strip per
+    // animation. The old slime idle/run sheets are gone.
     const coinImg = new Image();
     coinImg.src = '/assets/obstacles/coin.png';
     coinImg.onload = () => {
@@ -87,18 +77,17 @@
       requestAnimationFrame(gameLoop);
     }
 
-    // Bat sprite is drawn VERTICALLY (grip at the bottom) — the swing code
-    // rotates it around the grip, so image-up = where the bat points.
-    const batImg = new Image();
-    batImg.src = '/assets/obstacles/bat.png';
-
-    let img = idleImg
+    // Local player animation state, driven by duck.js (setClip / tickPlayerAnim
+    // / updatePlayerClip). `clip` is the current duck animation name.
     const animations = {
       frameWidth: 64,
       frameHeight: 64,
-      frameCount: 6,
+      frameCount: 4,
       currentFrame: 0,
-      frameRow: 0
+      frameRow: 0,
+      clip: 'idle',
+      frameTimer: 0,
+      done: false,
     };
     const canvas = document.getElementById('game');
     canvas.setAttribute('tabindex', '0');

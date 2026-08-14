@@ -4,6 +4,7 @@ const gameState = require('../state/gameState');
 const {
   SWING_COOLDOWN_MS,
   SWING_COOLDOWN_TOLERANCE_MS,
+  PLAYER_INVULN_MS,
   SWING_RADIUS,
   SWING_REACH_OFFSET,
   KNOCKBACK_COMPONENT,
@@ -43,10 +44,16 @@ function registerCombatHandlers(socket, { io }) {
       const cy = attacker.y;
       for (const id in gameState.players) {
         if (id === socket.id) continue; // can't hit yourself
+        // Per-target invulnerability: a player just hit (by anyone) can't be hit
+        // again until their window expires. This is what stops a held/mashed
+        // punch from stringing hits on the same person, while still letting one
+        // swing hit every OTHER player in range this frame.
+        if ((gameState.invulnerableUntil[id] || 0) > now) continue;
         const target = gameState.players[id];
         const dx = target.x - cx;
         const dy = target.y - cy;
         if (dx * dx + dy * dy <= SWING_RADIUS * SWING_RADIUS) {
+          gameState.invulnerableUntil[id] = now + PLAYER_INVULN_MS;
           // Tier 0 is the exact old/base knockback. Each purchased knockback
           // tier adds the configured percentage (15% by default), additively:
           // T1=115%, T2=130%, T3=145% with the default shop.json.

@@ -30,6 +30,10 @@ const gameState = {
   lastMoveAt: {},
   lastChatAt: {},
   lastSwingAt: {},
+  // Per-target invulnerability: a player who was just hit can't be hit again
+  // until this timestamp, so a single hit lands once per target no matter how
+  // fast the attacker swings.
+  invulnerableUntil: {},
   lastPlayerFxAt: {},
   lastActivityAt: {},
   pendingRemoval: {},

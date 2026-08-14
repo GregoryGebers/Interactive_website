@@ -40,6 +40,9 @@
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
+      // Resizing the canvas resets context state, so re-assert crisp pixel-art
+      // scaling (no smoothing) every time. Matches the CSS image-rendering rule.
+      playObj.imageSmoothingEnabled = false;
       baseScale = Math.min(canvas.width / VIEW_WIDTH, canvas.height / VIEW_HEIGHT);
       offsetX = (canvas.width - VIEW_WIDTH * baseScale) / 2;
       offsetY = (canvas.height - VIEW_HEIGHT * baseScale) / 2;
@@ -173,7 +176,8 @@
       running : false,
       jumping: false,
       username: "",
-      color: "#1e3fff",
+      color: "#1e3fff",     // body tint for the duck (and the name label)
+      beakColor: "#e8a23a",  // secondary tint for the duck's beak + feet
       action: "idle",
       score: 0,
       chatMessage: null,

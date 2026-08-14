@@ -27,7 +27,41 @@
   <div id="connectionStatus" style="display:none;">Connecting...</div>
   <div id="editorTestBadge">EDITOR TEST · ISOLATED<br>Nothing here is sent to the live game</div>
 
-  <button id="twitchControls" class="pixel-btn pixel-btn-small">Interact with Stream</button>
+  <!-- Options (gear, top-right). Opens the panel below. -->
+  <button id="optionsBtn" class="pixel-btn pixel-btn-small" title="Options" aria-label="Options">⚙ Options</button>
+
+  <div id="optionsPanel" style="display:none;">
+    <div class="options-head">
+      <span class="options-title">OPTIONS</span>
+      <button id="optionsClose" class="pixel-btn pixel-btn-small">✕</button>
+    </div>
+
+    <div class="options-section">
+      <h4>Stream</h4>
+      <button id="twitchControls" class="pixel-btn pixel-btn-small">Interact with Stream</button>
+    </div>
+
+    <div class="options-section">
+      <h4>Character color</h4>
+      <div class="options-row"><span>Body</span><input type="color" id="optBodyColor" class="opt-color" value="#2b6b61" /></div>
+      <div class="options-row"><span>Beak &amp; feet</span><input type="color" id="optBeakColor" class="opt-color" value="#e8a23a" /></div>
+    </div>
+
+    <div class="options-section">
+      <h4>Account</h4>
+      <div id="optAccountInfo" class="options-info"></div>
+      <button id="optLogout" class="pixel-btn pixel-btn-small">Log out</button>
+    </div>
+
+    <div class="options-section">
+      <h4>Controls</h4>
+      <label class="options-row"><span>Enable controller</span><input type="checkbox" id="optGamepad" /></label>
+      <div id="optGamepadStatus" class="options-info"></div>
+      <div id="optBindings" class="options-bindings"></div>
+      <p class="options-hint">Click a key or pad button to rebind it. Left column = keyboard, right column = controller button.</p>
+      <button id="optResetBindings" class="pixel-btn pixel-btn-small">Reset to defaults</button>
+    </div>
+  </div>
 
   <!-- Private chat composer — hidden until you press T in-game. -->
   <div id="chatInputWrap">
@@ -89,7 +123,8 @@
       <div id="guestView" style="display:none;">
         <div class="login-row">
           <input id="usernameInput" type="text" placeholder="Username" maxlength="20" />
-          <input id="usernameColor" type="color" value="#1e3fff" title="Name color" />
+          <input id="usernameColor" type="color" value="#2b6b61" title="Duck body color" />
+          <input id="usernameBeakColor" type="color" value="#e8a23a" title="Beak &amp; feet color" />
         </div>
         <button id="usernameBtn" class="pixel-btn">GO</button>
         <button id="backToAuth" class="pixel-btn pixel-btn-ghost pixel-btn-small">Back to sign in</button>
@@ -100,7 +135,7 @@
         <kbd>W</kbd>/<kbd>↑</kbd> to jump (hold for higher) ·
         <kbd>SHIFT</kbd> to dash ·
         <kbd>CTRL</kbd> to vanish ·
-        <kbd>SPACE</kbd> to attack ·
+        <kbd>SPACE</kbd> to punch ·
         <kbd>T</kbd> to talk ·
         <kbd>P</kbd> for the slime shop
         <br><br>
@@ -143,9 +178,11 @@
   <script src="/js/game/editorTestSocket.js"></script>
   <script src="/js/game/twitch.js"></script>
   <script src="/js/game/socket.js"></script>
+  <script src="/js/game/duck.js"></script>
   <script src="/js/game/auth.js"></script>
   <script src="/js/game/camera.js"></script>
   <script src="/js/game/movement.js"></script>
+  <script src="/js/game/keybindings.js"></script>
   <script src="/js/game/effects.js"></script>
   <script src="/js/game/abilities.js"></script>
   <script src="/js/game/skins.js"></script>
@@ -158,5 +195,6 @@
   <script src="/js/game/scene.js"></script>
   <script src="/js/game/rendering.js"></script>
   <script src="/js/game/input.js"></script>
+  <script src="/js/game/options.js"></script>
 </body>
 </html>

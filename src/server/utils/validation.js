@@ -40,6 +40,16 @@ function sanitizeMoveData(data, existingPlayer = null) {
     ? data.color
     : DEFAULT_USERNAME_COLOR;
 
+  // Secondary tint for the duck's beak + feet. Optional; null means "leave the
+  // original beak color" on the client.
+  const beakColor = typeof data.beakColor === 'string' && HEX_COLOR_RE.test(data.beakColor)
+    ? data.beakColor
+    : null;
+
+  // Which way the duck faces (1 = right, -1 = left). Drives the client-side
+  // horizontal flip when drawing other players.
+  const facing = Number(data.facing) === -1 ? -1 : 1;
+
   // Equipped skin is server-owned persistent state; movement packets may not
   // switch it. Skin changes go through the `equip_skin` socket event.
   const skin = (existingPlayer && existingPlayer.skin) || 'classic';
@@ -58,6 +68,8 @@ function sanitizeMoveData(data, existingPlayer = null) {
     frameRow: Number.isFinite(Number(data.frameRow)) ? Number(data.frameRow) : 0,
     username,
     color,
+    beakColor,
+    facing,
     emote: typeof data.emote === 'string' ? data.emote : 'idle',
     score: Number.isFinite(existingScore) ? existingScore : 0,
     skin,
