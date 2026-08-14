@@ -3,7 +3,7 @@
   "cosmetics": {
     "items": {
       "classic": {
-        "enabled": true,
+        "enabled": false,
         "cost": 0
       },
       "mob1": {
@@ -11,35 +11,35 @@
         "cost": 10
       },
       "mob2": {
-        "enabled": true,
+        "enabled": false,
         "cost": 50
       },
       "mob3": {
-        "enabled": true,
+        "enabled": false,
         "cost": 100
       },
       "monster1": {
-        "enabled": true,
+        "enabled": false,
         "cost": 100
       },
       "monster2": {
-        "enabled": true,
+        "enabled": false,
         "cost": 200
       },
       "monster3": {
-        "enabled": true,
+        "enabled": false,
         "cost": 200
       },
       "enemy1": {
-        "enabled": true,
+        "enabled": false,
         "cost": 300
       },
       "enemy2": {
-        "enabled": true,
+        "enabled": false,
         "cost": 400
       },
       "enemy3": {
-        "enabled": true,
+        "enabled": false,
         "cost": 500
       }
     }
