@@ -23,7 +23,7 @@ function registerChatHandlers(socket, { io }) {
       // Sanitize: strip control characters, collapse whitespace, cap length.
       let message = data.message
         .replace(/[\u0000-\u001f\u007f]/g, ' ')
-        .replace(/s+/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim()
         .slice(0, MAX_CHAT_LENGTH);
       if (!message) return;
