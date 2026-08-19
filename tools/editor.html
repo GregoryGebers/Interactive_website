@@ -13,34 +13,73 @@
 <div id="app">
   <!-- ================= TOOLBAR ================= -->
   <div id="toolbar">
-    <span class="title">SCENE BUILDER</span>
-    <div class="sep"></div>
-    <button class="btn tool active" data-tool="select" title="Select / move / resize (V)">▻ Select</button>
-    <button class="btn tool" data-tool="hitbox" title="Draw a collision box (B)">▧ Hitbox</button>
-    <button class="btn tool" data-tool="zoomZone" title="Draw a player-camera zoom zone (Z)">⌕ Zoom Zone</button>
-    <button class="btn tool" data-tool="coin" title="Place a coin spawn (C)">● Coin</button>
-    <button class="btn tool" data-tool="playerStart" title="Move the player spawn (P)">⚑ Spawn</button>
-    <button class="btn tool" data-tool="pan" title="Pan the view (hold Space)">✋ Pan</button>
-    <div class="sep"></div>
-    <button class="btn ghost" id="groupBtn" title="Stick selected objects together (Ctrl+G)">⛓ Group</button>
-    <button class="btn ghost" id="ungroupBtn" title="Unstick selected group (Ctrl+Shift+G)">⛓ Unstick</button>
-    <div class="sep"></div>
-    <button class="btn ghost" id="zoomOut" title="Zoom out">−</button>
-    <span id="zoomLabel" style="font-size:12px;color:var(--muted);width:42px;text-align:center;">100%</span>
-    <button class="btn ghost" id="zoomIn" title="Zoom in">+</button>
-    <button class="btn ghost" id="zoomFit" title="Fit world to view">Fit</button>
-    <div class="sep"></div>
-    <label class="chk"><input type="checkbox" id="snapToggle"> Snap</label>
-    <input class="num" id="gridSize" type="number" min="1" max="200" value="10" title="Grid / snap size">
-    <div class="sep"></div>
-    <button class="btn gold" id="shopSettingsBtn" title="Configure cosmetics, upgrades and combat prices">🛒 Shop Settings</button>
+    <span class="title">SCENE&nbsp;BUILDER</span>
+
+    <!-- Edit tools: selection and the zone-drawing tools -->
+    <div class="tgroup" data-group="edit">
+      <span class="tgroup-label">EDIT</span>
+      <div class="tgroup-btns">
+        <button class="btn tool active" data-tool="select" title="Select / move / resize (V)">&#9655; Select</button>
+        <button class="btn tool" data-tool="hitbox" title="Draw a collision box (B)">&#9639; Hitbox</button>
+        <button class="btn tool" data-tool="zoomZone" title="Draw a player-camera zoom zone (Z)">&#8981; Zoom Zone</button>
+        <button class="btn tool" data-tool="mobZone" title="Draw a mob containment zone &mdash; mobs can't leave it (M)">&#9638; Mob Zone</button>
+      </div>
+    </div>
+
+    <!-- Placement: things you drop into the world -->
+    <div class="tgroup" data-group="place">
+      <span class="tgroup-label">PLACE</span>
+      <div class="tgroup-btns">
+        <button class="btn tool" data-tool="coin" title="Place a coin spawn (C)">&#9679; Coin</button>
+        <button class="btn tool" data-tool="spawner" title="Draw a mob spawn area (N)">&#9760; Spawner</button>
+        <button class="btn tool" data-tool="playerStart" title="Move the player spawn (P)">&#9873; Spawn</button>
+      </div>
+    </div>
+
+    <!-- Navigation: moving the view and sticking objects together -->
+    <div class="tgroup" data-group="nav">
+      <span class="tgroup-label">NAV</span>
+      <div class="tgroup-btns">
+        <button class="btn tool" data-tool="pan" title="Pan the view (hold Space)">&#9995; Pan</button>
+        <button class="btn ghost" id="groupBtn" title="Stick selected objects together (Ctrl+G)">&#9939; Group</button>
+        <button class="btn ghost" id="ungroupBtn" title="Unstick selected group (Ctrl+Shift+G)">&#9939; Unstick</button>
+      </div>
+    </div>
+
+    <!-- View: zoom and snapping -->
+    <div class="tgroup" data-group="view">
+      <span class="tgroup-label">VIEW</span>
+      <div class="tgroup-btns">
+        <button class="btn ghost icon" id="zoomOut" title="Zoom out">&minus;</button>
+        <span id="zoomLabel">100%</span>
+        <button class="btn ghost icon" id="zoomIn" title="Zoom in">+</button>
+        <button class="btn ghost" id="zoomFit" title="Fit world to view">Fit</button>
+        <label class="chk"><input type="checkbox" id="snapToggle"> Snap</label>
+        <input class="num" id="gridSize" type="number" min="1" max="200" value="10" title="Grid / snap size">
+      </div>
+    </div>
+
     <div class="toolbar-spacer"></div>
-    <button class="btn ghost" id="loadBtn" title="Load the currently published level/shop as a fresh starting point">⟳ Load Live</button>
-    <button class="btn ghost" id="importSceneBtn" title="Open a scene.json file from your computer">⇧ Import Scene</button>
-    <button class="btn ghost" id="importShopBtn" title="Open a shop.json file from your computer">⇧ Import Shop</button>
-    <button class="btn" id="exportBtn" title="Download your current scene as scene.json">⭳ Export Scene</button>
-    <button class="btn ghost" id="testBtn" title="Test this draft in a completely isolated single-player session">▶ Test Draft</button>
-    <button class="btn gold" id="saveBtn" title="Save this draft in this browser (Ctrl+S)">💾 Save Draft</button>
+
+    <!-- Project actions: kept apart from the editing tools -->
+    <div class="tgroup project" data-group="project">
+      <span class="tgroup-label">PROJECT</span>
+      <div class="tgroup-btns">
+        <div class="menu-wrap" id="fileMenuWrap">
+          <button class="btn ghost" id="fileMenuBtn" aria-haspopup="true" aria-expanded="false" title="Import, export and load scene / shop files">&#9776; File</button>
+          <div class="menu" id="fileMenu" role="menu">
+            <button class="menu-item" id="loadBtn" title="Load the currently published level/shop as a fresh starting point">&#8635; Load Live</button>
+            <button class="menu-item" id="importSceneBtn" title="Open a scene.json file from your computer">&#8679; Import Scene</button>
+            <button class="menu-item" id="importShopBtn" title="Open a shop.json file from your computer">&#8679; Import Shop</button>
+            <div class="menu-sep"></div>
+            <button class="menu-item" id="exportBtn" title="Download your current scene as scene.json">&#11015; Export Scene</button>
+          </div>
+        </div>
+        <button class="btn ghost" id="shopSettingsBtn" title="Configure cosmetics, upgrades and combat prices">&#128722; Shop</button>
+        <button class="btn ghost" id="testBtn" title="Test this draft in a completely isolated single-player session">&#9654; Test Draft</button>
+        <button class="btn gold" id="saveBtn" title="Save this draft in this browser (Ctrl+S)">&#128190; Save Draft</button>
+      </div>
+    </div>
     <span id="status">ready</span>
   </div>
   <input id="sceneFileInput" type="file" accept="application/json,.json" hidden>
@@ -58,10 +97,13 @@
     <!-- Canvas -->
     <div id="canvasWrap">
       <canvas id="editorCanvas"></canvas>
-      <div id="canvasHint">
-        Drag empty space to box-select · Shift/Ctrl-click add/remove · <kbd>Ctrl+G</kbd> group · <kbd>Ctrl+C</kbd>/<kbd>Ctrl+V</kbd> copy/paste · <kbd>Z</kbd> zoom zone · <kbd>B</kbd> box · <kbd>Del</kbd> remove · wheel zoom
+      <!-- Status bar: tool name + the shortcuts relevant to that tool.
+           Filled in by syncToolButtons() in toolbar.js. -->
+      <div id="statusBar">
+        <span id="statusTool">SELECT</span>
+        <div id="statusHints"></div>
+        <span id="coords">0, 0</span>
       </div>
-      <div id="coords">0, 0</div>
     </div>
 
     <!-- Inspector -->

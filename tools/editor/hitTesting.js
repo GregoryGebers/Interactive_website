@@ -6,6 +6,8 @@ function rectOf(type, index) {
   if (type === 'hitbox') return scene.hitboxes[index];
   if (type === 'coin') { const c = scene.coins[index]; return c ? { x: c.x, y: c.y, width: COIN_SIZE, height: COIN_SIZE } : null; }
   if (type === 'zoomZone') return scene.camera.zoomZones[index] || null;
+  if (type === 'mobZone') return scene.mobZones[index] || null;
+  if (type === 'spawner') return scene.spawners[index] || null;
   if (type === 'playerStart') { const p = scene.playerStart; return { x: p.x, y: p.y, width: 20, height: 20 }; }
   return null;
 }
@@ -19,9 +21,13 @@ function hitTest(wx, wy) {
   if (pointInRect(wx, wy, rectOf('playerStart', 0))) return { type: 'playerStart', index: 0 };
   for (let i = scene.hitboxes.length - 1; i >= 0; i--) if (pointInRect(wx, wy, scene.hitboxes[i])) return { type: 'hitbox', index: i };
   for (let i = scene.props.length - 1; i >= 0; i--) if (pointInRect(wx, wy, scene.props[i])) return { type: 'prop', index: i };
+  // Spawners are small-ish and belong with the click-priority objects, above
+  // the big containment/zoom zones.
+  for (let i = scene.spawners.length - 1; i >= 0; i--) if (pointInRect(wx, wy, scene.spawners[i])) return { type: 'spawner', index: i };
   // Zones are deliberately last because they can be huge; normal level art
-  // and collision boxes remain easier to click inside a zoom zone.
+  // and collision boxes remain easier to click inside a zoom / mob zone.
   for (let i = scene.camera.zoomZones.length - 1; i >= 0; i--) if (pointInRect(wx, wy, scene.camera.zoomZones[i])) return { type: 'zoomZone', index: i };
+  for (let i = scene.mobZones.length - 1; i >= 0; i--) if (pointInRect(wx, wy, scene.mobZones[i])) return { type: 'mobZone', index: i };
   return null;
 }
 // Which resize handle (if any) is under the mouse for the current selection.

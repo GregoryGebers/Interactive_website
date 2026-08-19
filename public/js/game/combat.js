@@ -16,6 +16,15 @@
       lastSwingTriedAt = now;
       player.swingStartAt = now;
       socket.emit('swing', { dir: player.facing });
+      // Mobs are simulated client-side (mobs.js), so unlike player-vs-player
+      // hits there is no server round-trip: resolve the punch against them here.
+      if (typeof damageMobsInRange === 'function') {
+        damageMobsInRange(
+          player.x + player.width / 2,
+          player.y + player.height / 2,
+          player.facing
+        );
+      }
     }
 
     // Other players' swings arrive as an event (the server broadcasts them)

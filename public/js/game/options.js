@@ -34,6 +34,9 @@
         renderAccount();
         renderGamepadStatus();
         renderBindings();
+        // Those assignments were made in code, which fires no events — repaint
+        // the pixel switch/swatch faces so they match (see uiKit.js).
+        if (window.PixelUI) window.PixelUI.sync(panel);
         panel.style.display = 'block';
       }
       function close() { panel.style.display = 'none'; if (typeof canvas !== 'undefined' && canvas) canvas.focus(); }
@@ -103,18 +106,26 @@
           label.className = 'binding-label';
           label.textContent = a.label;
 
+          // Keyboard and controller are visually distinct objects: a cream
+          // physical keycap vs. a violet pad chip. Both are pressable to rebind.
           const keyBtn = document.createElement('button');
-          keyBtn.className = 'pixel-btn pixel-btn-small binding-btn';
-          keyBtn.textContent = capturingKey === a.id
-            ? 'Press a key…'
-            : keyBindings[a.id].keys.map(keyLabel).join(' / ');
+          keyBtn.className = 'keycap binding-btn';
+          if (capturingKey === a.id) {
+            keyBtn.classList.add('is-capturing');
+            keyBtn.textContent = 'PRESS…';
+          } else {
+            keyBtn.textContent = keyBindings[a.id].keys.map(keyLabel).join(' / ');
+          }
           keyBtn.addEventListener('click', () => beginKeyCapture(a.id));
 
           const padBtn = document.createElement('button');
-          padBtn.className = 'pixel-btn pixel-btn-small binding-btn';
-          padBtn.textContent = (padRebindAction === a.id)
-            ? 'Press button…'
-            : ('Pad ' + (keyBindings[a.id].pad != null ? keyBindings[a.id].pad : '—'));
+          padBtn.className = 'keycap keycap-pad binding-btn';
+          if (padRebindAction === a.id) {
+            padBtn.classList.add('is-capturing');
+            padBtn.textContent = 'PRESS…';
+          } else {
+            padBtn.textContent = 'PAD ' + (keyBindings[a.id].pad != null ? keyBindings[a.id].pad : '—');
+          }
           padBtn.addEventListener('click', () => { startPadRebind(a.id, renderBindings); renderBindings(); });
 
           row.appendChild(label);

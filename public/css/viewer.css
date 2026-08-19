@@ -1,693 +1,1177 @@
-    :root {
-      /* Palette pulled from the game itself: slime green + grass, with a
-         warm gold pop for the primary action so it doesn't get lost against
-         all the green. Hard edges + offset shadows instead of blur, to read
-         as pixel/arcade rather than generic modern UI. */
-      --ink: #16241a;
-      --panel: #1f3326;
-      --panel-light: #294633;
-      --slime: #7ed957;
-      --slime-dark: #4c9a2a;
-      --gold: #ffc145;
-      --gold-dark: #c9891f;
-      --cream: #f3f7ee;
-      --muted: #a9c2ac;
-    }
+/* ==========================================================================
+   EberHex — player-facing UI
+   --------------------------------------------------------------------------
+   One visual language for every player-facing surface (join, options, shop,
+   HUD, dialogs): dark forest-green panels, lime highlights, yellow primary
+   actions, purple controller accents. Hard 2px borders, notched pixel
+   corners, chunky offset shadows. No rounded cards, no glass, no blur.
 
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: black;
-    }
+   Layers, in order:
+     1. Tokens
+     2. Primitives  (panel / button / keycap / pip / stamp / switch / swatch)
+     3. Stage       (canvas, twitch background, HUD)
+     4. Surfaces    (join, options, shop, chat)
+   ========================================================================== */
 
-    /* Twitch stream as BACKGROUND, fills the whole viewport. Starts with
-       pointer-events:none (game canvas above it gets all clicks/keys by
-       default) — the #twitchControls button toggles this and the canvas's
-       pointer-events in tandem so the player can be interacted with
-       directly when needed. */
-    #twitchBg {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      border: 0;
-      z-index: 0;
-      pointer-events: none;
-      overflow: hidden;
-    }
+/* ---- 1. Tokens ---------------------------------------------------------- */
+:root {
+  /* Palette pulled from the game itself: slime green + grass, with a warm
+     gold pop for primary actions and a violet accent reserved for controller
+     / secondary metadata so the two input types never read alike. */
+  --ink: #101a13;
+  --ink-soft: #16241a;
+  --panel: #1b2e21;
+  --panel-light: #24402c;
+  --panel-lighter: #2f5439;
+  --slime: #7ed957;
+  --slime-dark: #4c9a2a;
+  --gold: #ffc145;
+  --gold-light: #ffd370;
+  --gold-dark: #c9891f;
+  --violet: #9b6dff;
+  --violet-dark: #6b45c4;
+  --cream: #f3f7ee;
+  --muted: #a9c2ac;
+  --danger: #ff6b5a;
 
-    #game {
-      position: absolute;
-      top: 0;
-      left: 0;
-      z-index: 5; /* above twitch */
-      background: transparent;
-      display: block;
-      /* Crisp pixel-art scaling — no bilinear blur when the view is zoomed.
-         Listed weakest-first so a browser supporting `pixelated` uses it. */
-      image-rendering: -webkit-optimize-contrast;
-      image-rendering: crisp-edges;
-      image-rendering: pixelated;
-    }
+  /* Corner cut size for the notched pixel silhouette. */
+  --notch: 6px;
+  --notch-sm: 4px;
 
-    #loginOverlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(10, 16, 11, 0.72);
-      z-index: 10;
-      font-family: 'Inter', Arial, sans-serif;
-    }
+  /* Animations stay short and physical — 150-250ms, no idle pulsing. */
+  --t-fast: 120ms;
+  --t-base: 180ms;
+  --t-menu: 220ms;
 
-    #loginOverlay .login-box {
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      gap: 16px;
-      background: var(--panel);
-      padding: 28px 32px 24px;
-      border: 3px solid var(--ink);
-      box-shadow: 6px 6px 0 var(--ink);
-      min-width: 300px;
-    }
+  --font-pixel: 'Press Start 2P', monospace;
+  --font-read: 'Inter', Arial, sans-serif;
+}
 
-    #loginOverlay .login-title {
-      font-family: 'Press Start 2P', monospace;
-      font-size: 14px;
-      color: var(--slime);
-      text-align: center;
-      letter-spacing: 1px;
-      text-shadow: 2px 2px 0 var(--ink);
-      margin: 0 0 4px;
-    }
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: black;
+}
 
-    #loginOverlay .login-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
+/* ---- 2. Primitives ------------------------------------------------------ */
 
-    #loginOverlay label {
-      color: var(--muted);
-      font-family: 'Inter', Arial, sans-serif;
-      font-size: 13px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
+/* --- Buttons -------------------------------------------------------------
+   Three types only:
+     .pixel-btn            primary   — yellow (Play, Buy, Interact)
+     .pixel-btn-secondary  secondary — dark green (Sign Out, Reset, Back)
+     .pixel-btn-compact    compact   — small yellow square (Close, gear)
+   `.pixel-btn-ghost` / `.pixel-btn-small` are kept as aliases of secondary /
+   compact so existing markup and JS-generated buttons need no rewiring.
 
-    #usernameInput {
-      font-family: 'Inter', Arial, sans-serif;
-      font-size: 16px;
-      font-weight: 600;
-      padding: 10px 12px;
-      width: 200px;
-      color: var(--ink);
-      background: var(--cream);
-      border: 2px solid var(--ink);
-      box-shadow: 3px 3px 0 var(--ink);
-      outline: none;
-    }
-    #usernameInput:focus {
-      border-color: var(--slime);
-      box-shadow: 3px 3px 0 var(--slime-dark);
-    }
-    #usernameInput::placeholder {
-      color: #7a8a7d;
-      font-weight: 400;
-    }
+   Physical press: the shadow sits below/right, the face lights up on hover
+   and drops into its own shadow when pressed. Clip-path eats box-shadow, so
+   anything notched uses filter: drop-shadow() — that follows the clipped
+   outline instead of the original rectangle. */
+.pixel-btn {
+  position: relative;
+  font-family: var(--font-pixel);
+  font-size: 13px;
+  line-height: 1.4;
+  letter-spacing: 0.5px;
+  color: var(--ink);
+  background: var(--gold);
+  border: 2px solid var(--ink);
+  padding: 13px 18px;
+  cursor: pointer;
+  --notch: var(--notch-sm);
+  clip-path: polygon(
+    var(--notch) 0, calc(100% - var(--notch)) 0,
+    100% var(--notch), 100% calc(100% - var(--notch)),
+    calc(100% - var(--notch)) 100%, var(--notch) 100%,
+    0 calc(100% - var(--notch)), 0 var(--notch)
+  );
+  filter: drop-shadow(3px 3px 0 var(--ink));
+  transition: transform var(--t-fast) ease,
+              filter var(--t-fast) ease,
+              background var(--t-base) ease,
+              color var(--t-base) ease;
+}
+/* Top-left inner highlight: a lit bevel without any gradient. */
+.pixel-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-top: 2px solid rgba(255, 255, 255, 0.3);
+  border-left: 2px solid rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--t-base) ease;
+}
+.pixel-btn:hover { background: var(--gold-light); }
+.pixel-btn:hover::before { opacity: 1; }
+.pixel-btn:active,
+.pixel-btn.is-pressed {
+  transform: translate(3px, 3px);
+  filter: none;
+}
+/* Clip-path would eat a normal outline, so the focus ring is drawn inside. */
+.pixel-btn:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 3px var(--slime);
+}
+.pixel-btn[disabled] { cursor: not-allowed; }
 
-    /* ---- Account login (optional Supabase auth) --------------------------- */
-    /* The three views share this column layout; only one is visible at a time. */
-    #authView, #signedInView, #guestView {
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      gap: 12px;
-    }
+.pixel-btn-secondary,
+.pixel-btn.pixel-btn-ghost {
+  background: var(--panel-light);
+  color: var(--cream);
+}
+.pixel-btn-secondary:hover,
+.pixel-btn.pixel-btn-ghost:hover {
+  background: var(--panel-lighter);
+  color: var(--slime);
+}
 
-    /* Sliding Sign In / Sign Up segmented toggle. */
-    .seg-toggle {
-      position: relative;
-      display: block;
-      padding: 4px;
-      background: rgba(0, 0, 0, 0.22);
-      border: 2px solid var(--ink);
-      box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.25);
-      user-select: none;
-    }
-    /* Buttons live in their own flex row so the slider's containing block is a
-       plain positioned block (some engines refuse to offset an absolutely
-       positioned child of a flex/grid container). */
-    .seg-toggle .seg-btn-row {
-      position: relative;
-      z-index: 1;
-      display: flex;
-    }
-    .seg-toggle .seg-slider {
-      position: absolute;
-      top: 4px;
-      left: 4px;
-      width: calc(50% - 6px);
-      height: calc(100% - 8px);
-      background: var(--slime);
-      border: 2px solid var(--ink);
-      box-shadow: 2px 2px 0 var(--ink);
-      /* Animate with transform, not `left`: this engine freezes a transitioned
-         `left`, but transitions `transform` fine on a block-parented element. */
-      transition: transform 0.18s cubic-bezier(0.5, 1.6, 0.4, 1);
-      z-index: 0;
-    }
-    .seg-toggle[data-mode="signup"] .seg-slider {
-      transform: translateX(calc(100% + 4px));
-    }
-    .seg-toggle .seg-btn {
-      position: relative;
-      z-index: 1;
-      flex: 1 1 0;
-      background: transparent;
-      border: 0;
-      padding: 9px 6px;
-      cursor: pointer;
-      font-family: 'Press Start 2P', monospace;
-      font-size: 11px;
-      letter-spacing: 0.5px;
-      color: var(--muted);
-      transition: color 0.16s ease;
-    }
-    .seg-toggle .seg-btn.is-active {
-      color: var(--ink);
-      text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.35);
-    }
+.pixel-btn-compact,
+.pixel-btn.pixel-btn-small {
+  font-size: 10px;
+  padding: 9px 11px;
+  letter-spacing: 0;
+  filter: drop-shadow(2px 2px 0 var(--ink));
+}
+.pixel-btn-compact:active,
+.pixel-btn.pixel-btn-small:active { transform: translate(2px, 2px); }
 
-    .auth-fields {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .auth-fields input[type="text"],
-    .auth-fields input[type="password"] {
-      font-family: 'Inter', Arial, sans-serif;
-      font-size: 15px;
-      font-weight: 600;
-      padding: 11px 12px;
-      color: var(--ink);
-      background: var(--cream);
-      border: 2px solid var(--ink);
-      box-shadow: 3px 3px 0 var(--ink);
-      outline: none;
-    }
-    .auth-fields input:focus {
-      border-color: var(--slime);
-      box-shadow: 3px 3px 0 var(--slime-dark);
-    }
-    .auth-fields input::placeholder { color: #7a8a7d; font-weight: 400; }
+/* --- Keycaps -------------------------------------------------------------
+   Keyboard keys and controller buttons are deliberately different objects:
+   cream physical caps vs. violet pad chips. */
+.keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  padding: 6px 8px;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.5px;
+  color: var(--ink);
+  background: var(--cream);
+  border: 2px solid var(--ink);
+  box-shadow: 0 2px 0 var(--gold-dark), 2px 2px 0 var(--ink);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.keycap-pad {
+  color: var(--cream);
+  background: var(--violet);
+  box-shadow: 0 2px 0 var(--violet-dark), 2px 2px 0 var(--ink);
+}
 
-    .auth-color-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      font-family: 'Inter', Arial, sans-serif;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--muted);
-    }
-    .auth-color-row input[type="color"] {
-      width: 46px;
-      height: 34px;
-      padding: 0;
-      border: 2px solid var(--ink);
-      box-shadow: 3px 3px 0 var(--ink);
-      background: var(--cream);
-      cursor: pointer;
-    }
+/* A keycap that is also a button (rebinding). Same silhouette, pressable. */
+button.keycap {
+  cursor: pointer;
+  transition: transform var(--t-fast) ease, box-shadow var(--t-fast) ease,
+              background var(--t-base) ease;
+}
+button.keycap:hover { background: #fff; }
+button.keycap-pad:hover { background: #ad86ff; }
+button.keycap:active,
+button.keycap.is-capturing {
+  transform: translate(0, 2px);
+  box-shadow: 2px 0 0 var(--ink);
+}
+button.keycap.is-capturing { background: var(--slime); color: var(--ink); }
+button.keycap:focus-visible { outline: 2px solid var(--slime); outline-offset: 2px; }
 
-    /* "or" divider between account login and guest play. */
-    .auth-divider {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      color: var(--muted);
-      font-family: 'Inter', Arial, sans-serif;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-    .auth-divider::before,
-    .auth-divider::after {
-      content: '';
-      flex: 1;
-      height: 2px;
-      background: rgba(255, 255, 255, 0.15);
-    }
+/* --- Upgrade pips --------------------------------------------------------
+   ● ● ○ — filled pips are slime blobs, empty ones hollow sockets. */
+.pips {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+  min-height: 9px;
+}
+.pips i {
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--ink);
+  background: rgba(0, 0, 0, 0.3);
+  /* Slime blob: domed top, flat bottom — the recurring EberHex motif. */
+  clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 100%, 0 100%, 0 25%);
+}
+.pips i.on { background: var(--slime); }
 
-    /* Secondary/ghost button variant for guest + sign-out. */
-    .pixel-btn.pixel-btn-ghost {
-      background: transparent;
-      color: var(--cream);
-      box-shadow: 3px 3px 0 var(--ink);
-    }
-    .pixel-btn.pixel-btn-ghost:hover {
-      background: rgba(255, 255, 255, 0.08);
-    }
+/* --- Stamps --------------------------------------------------------------
+   MAXED / OWNED / EQUIPPED. A stamp replaces a disabled button so the slot
+   reads as "already yours" rather than "broken". */
+.stamp {
+  display: inline-block;
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  letter-spacing: 1px;
+  padding: 5px 7px;
+  color: var(--slime);
+  border: 2px solid var(--slime-dark);
+  background: rgba(126, 217, 87, 0.1);
+  --notch: 3px;
+  clip-path: polygon(
+    var(--notch) 0, calc(100% - var(--notch)) 0,
+    100% var(--notch), 100% calc(100% - var(--notch)),
+    calc(100% - var(--notch)) 100%, var(--notch) 100%,
+    0 calc(100% - var(--notch)), 0 var(--notch)
+  );
+}
+.stamp-mute {
+  color: var(--muted);
+  border-color: rgba(255, 255, 255, 0.16);
+  background: transparent;
+}
 
-    #signedInView .auth-status {
-      font-family: 'Inter', Arial, sans-serif;
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--cream);
-      text-align: center;
-      margin: 0;
-    }
-    .name-swatch {
-      display: inline-block;
-      width: 12px;
-      height: 12px;
-      border: 1px solid var(--ink);
-      vertical-align: middle;
-      margin-left: 2px;
-    }
+/* --- Coin price ---------------------------------------------------------- */
+.coin-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  color: var(--gold);
+}
+.coin {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  background: var(--gold);
+  border: 2px solid var(--gold-dark);
+  clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
+}
+.coin-price.is-poor { color: #c08b74; }
+.coin-price.is-poor .coin { background: #8a6a3a; border-color: #5d472a; }
 
-    /* Pixel/arcade button: hard offset shadow that collapses on press,
-       giving a tactile "pushed in" feel instead of a flat modern hover. */
-    .pixel-btn {
-      font-family: 'Press Start 2P', monospace;
-      font-size: 13px;
-      color: var(--ink);
-      background: var(--gold);
-      border: 2px solid var(--ink);
-      box-shadow: 3px 3px 0 var(--ink);
-      padding: 12px 18px;
-      cursor: pointer;
-      transition: transform 0.05s ease, box-shadow 0.05s ease, background 0.15s ease;
-    }
-    .pixel-btn:hover {
-      background: #ffd370;
-    }
-    .pixel-btn:active {
-      transform: translate(3px, 3px);
-      box-shadow: 0 0 0 var(--ink);
-    }
-    .pixel-btn:focus-visible {
-      outline: 3px solid var(--slime);
-      outline-offset: 2px;
-    }
+/* --- Toggle switch -------------------------------------------------------
+   Replaces the browser checkbox with an [ OFF | ON ] game switch. */
+.pixel-switch {
+  display: inline-flex;
+  position: relative;
+  border: 2px solid var(--ink);
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: 2px 2px 0 var(--ink);
+  cursor: pointer;
+  user-select: none;
+  flex: none;
+}
+.pixel-switch span {
+  position: relative;
+  z-index: 1;
+  padding: 6px 9px;
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  transition: color var(--t-base) ease;
+}
+.pixel-switch::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: var(--panel-lighter);
+  transition: transform var(--t-base) cubic-bezier(0.5, 1.6, 0.4, 1),
+              background var(--t-base) ease;
+}
+.pixel-switch[aria-checked="true"]::before {
+  transform: translateX(100%);
+  background: var(--slime);
+}
+.pixel-switch[aria-checked="false"] span:first-child { color: var(--cream); }
+.pixel-switch[aria-checked="true"] span:last-child { color: var(--ink); }
+.pixel-switch:focus-visible { outline: 2px solid var(--slime); outline-offset: 2px; }
 
-    .pixel-btn-small {
-      font-size: 11px;
-      padding: 8px 12px;
-      box-shadow: 3px 3px 0 var(--ink);
-    }
+/* --- Colour swatch + inline pixel picker ---------------------------------
+   The native <input type="color"> stays in the DOM — every existing read and
+   listener keeps working — but is visually replaced by a pixel swatch button
+   that expands an inline palette. See js/game/colorPicker.js. */
+.swatch-field { position: relative; }
+.swatch-field input[type="color"].is-enhanced {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  border: 0;
+  padding: 0;
+  pointer-events: none;
+}
+.swatch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px 5px 5px;
+  background: var(--panel-light);
+  border: 2px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  cursor: pointer;
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  color: var(--cream);
+  transition: transform var(--t-fast) ease, box-shadow var(--t-fast) ease,
+              background var(--t-base) ease;
+}
+.swatch-btn:hover { background: var(--panel-lighter); }
+.swatch-btn:active { transform: translate(2px, 2px); box-shadow: none; }
+.swatch-btn:focus-visible { outline: 2px solid var(--slime); outline-offset: 2px; }
+.swatch-btn .chip {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border: 2px solid var(--ink);
+  box-shadow: inset -2px -2px 0 rgba(0, 0, 0, 0.28);
+}
+/* Anchored to the swatch rather than in-flow: the field itself is only as
+   wide as its button (~50px in an options row), which would squeeze the
+   palette down to unclickable slivers. Right-aligned so it always stays
+   inside the 320px options panel and the login box. */
+.swatch-pop {
+  display: none;
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 208px;
+  padding: 8px;
+  background: var(--panel);
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+.swatch-field.is-open .swatch-pop {
+  display: block;
+  animation: menu-in var(--t-base) ease-out;
+}
+/* Four columns, not eight: at eight the 16 presets came out ~12px of clickable
+   area each, which is a coin-flip to hit. Four rows of four gives ~43px dots. */
+.swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.swatch-dot {
+  aspect-ratio: 1;
+  min-height: 36px;
+  padding: 0;
+  border: 2px solid var(--ink);
+  box-shadow: inset -2px -2px 0 rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+  transition: transform var(--t-fast) ease;
+}
+.swatch-dot:hover { transform: translateY(-2px); }
+.swatch-dot.is-active {
+  box-shadow: inset 0 0 0 2px var(--cream), inset -3px -3px 0 rgba(0, 0, 0, 0.28);
+}
+.swatch-dot:focus-visible { outline: 2px solid var(--slime); outline-offset: 1px; }
+.swatch-custom {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px;
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  background: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  cursor: pointer;
+  transition: color var(--t-base) ease, border-color var(--t-base) ease;
+}
+.swatch-custom:hover { color: var(--slime); border-color: var(--slime-dark); }
 
-    /* The stream toggle now lives inside the options panel, so it flows as a
-       normal block (full width) instead of being absolutely positioned. */
-    #twitchControls { display: block; width: 100%; }
+/* --- Section heading -----------------------------------------------------
+   Gold pixel label led by a slime-blob bullet — the recurring EberHex menu
+   pointer. Shared by the options panel and the join screen. */
+.ui-heading,
+#optionsPanel h4 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 10px;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  font-weight: normal;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.ui-heading::before,
+#optionsPanel h4::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  flex: none;
+  background: var(--slime);
+  clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 100%, 0 100%, 0 25%);
+}
 
-    /* ---- Options button + panel (top-right) -------------------------------- */
-    #optionsBtn {
-      position: absolute;
-      top: 14px;
-      right: 14px;
-      z-index: 60;
-    }
-    #optionsPanel {
-      position: absolute;
-      top: 56px;
-      right: 14px;
-      z-index: 60;
-      width: 300px;
-      max-width: calc(100vw - 28px);
-      max-height: calc(100vh - 70px);
-      overflow-y: auto;
-      background: var(--panel, #223);
-      border: 2px solid var(--ink, #16241a);
-      box-shadow: 4px 4px 0 var(--ink, #16241a);
-      padding: 12px;
-      color: var(--paper, #f3f7ee);
-      font-family: 'Inter', Arial, sans-serif;
-      font-size: 13px;
-    }
-    #optionsPanel .options-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    }
-    #optionsPanel .options-title {
-      font-family: 'Press Start 2P', monospace;
-      font-size: 12px;
-      color: var(--gold, #ffc145);
-    }
-    #optionsPanel .options-section {
-      border-top: 2px solid rgba(255, 255, 255, 0.12);
-      padding: 10px 0;
-    }
-    #optionsPanel .options-section:first-of-type { border-top: none; }
-    #optionsPanel h4 {
-      margin: 0 0 8px;
-      font-family: 'Press Start 2P', monospace;
-      font-size: 9px;
-      letter-spacing: 0.5px;
-      color: var(--gold, #ffc145);
-    }
-    #optionsPanel .options-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      margin: 6px 0;
-    }
-    #optionsPanel .options-info { opacity: 0.8; margin: 4px 0 8px; font-size: 12px; }
-    #optionsPanel .options-hint { opacity: 0.7; font-size: 11px; margin: 8px 0; }
-    #optionsPanel .opt-color {
-      width: 42px;
-      height: 28px;
-      padding: 0;
-      border: 2px solid var(--ink, #16241a);
-      background: var(--panel-light, #334);
-      cursor: pointer;
-    }
-    #optionsPanel .opt-color::-webkit-color-swatch-wrapper { padding: 2px; }
-    #optionsPanel .opt-color::-webkit-color-swatch { border: none; }
-    #optionsPanel .options-bindings { margin: 8px 0; }
-    #optionsPanel .binding-row {
-      display: grid;
-      grid-template-columns: 1fr auto auto;
-      align-items: center;
-      gap: 6px;
-      margin: 5px 0;
-    }
-    #optionsPanel .binding-label { font-size: 12px; }
-    #optionsPanel .binding-btn { min-width: 56px; text-align: center; }
+/* --- Motion --------------------------------------------------------------
+   Short and physical: a quick fade plus a few pixels of travel. Nothing
+   loops except the connection-status blink, which is stepped, not pulsed. */
+@keyframes menu-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* Quick lime flash when something becomes selected/purchased. */
+@keyframes slime-flash {
+  0%   { background: var(--slime); }
+  100% { background: var(--panel-light); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 
-    #usernameColor {
-      width: 40px;
-      height: 40px;
-      padding: 0;
-      border: 2px solid var(--ink);
-      box-shadow: 3px 3px 0 var(--ink);
-      cursor: pointer;
-      background: var(--panel-light);
-    }
-    /* Strip the native inset look so our own pixel border reads cleanly. */
-    #usernameColor::-webkit-color-swatch-wrapper { padding: 3px; }
-    #usernameColor::-webkit-color-swatch { border: none; }
-    #usernameColor::-moz-color-swatch { border: none; }
+/* ---- 3. Stage ----------------------------------------------------------- */
 
-    #loginOverlay .hint {
-      font-family: 'Inter', Arial, sans-serif;
-      font-size: 12px;
-      color: var(--muted);
-      text-align: center;
-      margin-top: 2px;
-    }
-    #loginOverlay .hint kbd {
-      font-family: 'Inter', Arial, sans-serif;
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--ink);
-      background: var(--slime);
-      border: 1px solid var(--ink);
-      border-radius: 3px;
-      padding: 1px 5px;
-      margin: 0 1px;
-    }
+/* Twitch stream as BACKGROUND, fills the whole viewport. Starts with
+   pointer-events:none (game canvas above it gets all clicks/keys by default) —
+   the #twitchControls button toggles this and the canvas's pointer-events in
+   tandem so the player can be interacted with directly when needed. */
+#twitchBg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  border: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
 
-    #connectionStatus {
-      position: absolute;
-      top: 14px;
-      right: 14px;
-      padding: 8px 14px;
-      background: var(--panel);
-      color: var(--cream);
-      font-family: 'Press Start 2P', monospace;
-      font-size: 10px;
-      letter-spacing: 0.5px;
-      border: 2px solid var(--ink);
-      box-shadow: 3px 3px 0 var(--ink);
-      z-index: 20;
-    }
+#game {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5; /* above twitch */
+  background: transparent;
+  display: block;
+  /* Crisp pixel-art scaling — no bilinear blur when the view is zoomed.
+     Listed weakest-first so a browser supporting `pixelated` uses it. */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+}
 
-    #editorTestBadge {
-      position: absolute;
-      top: 14px;
-      left: 14px;
-      display: none;
-      padding: 9px 12px;
-      background: var(--gold);
-      color: var(--ink);
-      font-family: 'Press Start 2P', monospace;
-      font-size: 9px;
-      border: 2px solid var(--ink);
-      box-shadow: 3px 3px 0 var(--ink);
-      z-index: 40;
-      line-height: 1.5;
-    }
+/* --- HUD chips ----------------------------------------------------------- */
+#connectionStatus {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  background: var(--panel);
+  color: var(--cream);
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  border: 2px solid var(--ink);
+  --notch: var(--notch-sm);
+  clip-path: polygon(
+    var(--notch) 0, calc(100% - var(--notch)) 0,
+    100% var(--notch), 100% calc(100% - var(--notch)),
+    calc(100% - var(--notch)) 100%, var(--notch) 100%,
+    0 calc(100% - var(--notch)), 0 var(--notch)
+  );
+  filter: drop-shadow(3px 3px 0 var(--ink));
+  z-index: 20;
+}
+/* Slime status dot, stepped rather than smoothly pulsing. */
+#connectionStatus::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  flex: none;
+  background: var(--gold);
+  clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 100%, 0 100%, 0 25%);
+  animation: blink-step 1s steps(1, end) infinite;
+}
+@keyframes blink-step {
+  0%, 55%   { opacity: 1; }
+  56%, 100% { opacity: 0.25; }
+}
 
-    /* ---- Chat input bubble: only YOU see this, while typing. The sent
-       message everyone sees is drawn on the canvas as a pixel speech
-       bubble (see drawChatBubble in the script). Follows the player each
-       frame via positionChatInput(). ---- */
-    #chatInputWrap {
-      position: absolute;
-      display: none;
-      z-index: 15;
-      transform: translate(-50%, -100%);
-    }
-    #chatInput {
-      font-family: 'Press Start 2P', monospace;
-      font-size: 10px;
-      color: var(--ink);
-      background: var(--cream);
-      border: 2px solid var(--ink);
-      box-shadow: 3px 3px 0 var(--ink);
-      padding: 9px 10px;
-      width: 220px;
-      outline: none;
-    }
-    #chatInput:focus {
-      border-color: var(--slime-dark);
-    }
-    #chatInput::placeholder {
-      color: #7a8a7d;
-    }
+#editorTestBadge {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  display: none;
+  padding: 9px 12px;
+  background: var(--gold);
+  color: var(--ink);
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  border: 2px solid var(--ink);
+  --notch: var(--notch-sm);
+  clip-path: polygon(
+    var(--notch) 0, calc(100% - var(--notch)) 0,
+    100% var(--notch), 100% calc(100% - var(--notch)),
+    calc(100% - var(--notch)) 100%, var(--notch) 100%,
+    0 calc(100% - var(--notch)), 0 var(--notch)
+  );
+  filter: drop-shadow(3px 3px 0 var(--ink));
+  z-index: 40;
+  line-height: 1.7;
+}
 
-    /* ---- "Say in Twitch chat?" toggle: sits above the chat input, same
-       pixel language as everything else (hard border, offset shadow,
-       slime/gold palette). When ON, a sent message is ALSO relayed to the
-       real Twitch channel chat via the server's StreamElements bot. ---- */
-    #twitchToggleRow {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
-      font-family: 'Press Start 2P', monospace;
-      font-size: 8px;
-      color: var(--cream);
-      user-select: none;
-    }
-    #twitchToggleRow .tt-label {
-      background: var(--panel);
-      border: 2px solid var(--ink);
-      box-shadow: 2px 2px 0 var(--ink);
-      padding: 5px 7px;
-      letter-spacing: 0.5px;
-    }
-    #twitchToggle {
-      width: 34px;
-      height: 18px;
-      border: 2px solid var(--ink);
-      box-shadow: 2px 2px 0 var(--ink);
-      background: var(--panel-light);
-      cursor: pointer;
-      position: relative;
-      flex: none;
-    }
-    #twitchToggle .knob {
-      position: absolute;
-      top: 1px;
-      left: 1px;
-      width: 14px;
-      height: 14px;
-      background: var(--muted);
-      transition: left 0.08s steps(2), background 0.08s;
-    }
-    #twitchToggle.on {
-      background: var(--slime-dark);
-    }
-    #twitchToggle.on .knob {
-      left: 17px;
-      background: var(--gold);
-    }
-    #twitchToggle:focus-visible {
-      outline: 3px solid var(--slime);
-      outline-offset: 2px;
-    }
+/* Shown on <body> while #twitchControls has handed clicks/keys to the Twitch
+   player, so it's obvious the game itself is temporarily not receiving input. */
+body.stream-interactive::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  border: 4px solid var(--gold);
+  box-shadow: inset 0 0 24px rgba(255, 193, 69, 0.5);
+  pointer-events: none;
+  z-index: 25;
+}
 
-    /* Pixel-step tail pointing down at your character. Two stacked squares
-       instead of a smooth CSS triangle, to keep the retro blocky look. */
-    #chatInputWrap::after {
-      content: '';
-      position: absolute;
-      left: 50%;
-      bottom: -10px;
-      width: 10px;
-      height: 10px;
-      transform: translateX(-50%);
-      background: var(--cream);
-      border: 2px solid var(--ink);
-      border-top: none;
-      box-shadow: 3px 3px 0 var(--ink);
-    }
+/* ---- 4. Surfaces -------------------------------------------------------- */
 
-    /* Shown on <body> while #twitchControls has handed clicks/keys to the
-       Twitch player, so it's obvious the game itself is temporarily not
-       receiving input. */
-    body.stream-interactive::after {
-      content: '';
-      position: fixed;
-      inset: 0;
-      border: 4px solid var(--gold);
-      box-shadow: inset 0 0 24px rgba(255, 193, 69, 0.5);
-      pointer-events: none;
-      z-index: 25;
-    }
+/* ==== Join the game ====================================================== */
+#loginOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 16, 11, 0.78);
+  z-index: 10;
+  font-family: var(--font-read);
+  animation: overlay-in var(--t-menu) ease-out;
+}
 
-    /* ---- Slime shop (press P) ---- */
-    #shopOverlay {
-      position: absolute;
-      inset: 0;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      background: rgba(10, 16, 11, 0.78);
-      z-index: 30;
-      font-family: 'Inter', Arial, sans-serif;
-    }
-    #shopOverlay .shop-box {
-      background: var(--panel);
-      border: 3px solid var(--ink);
-      box-shadow: 8px 8px 0 var(--ink);
-      padding: 20px 22px 22px;
-      width: min(760px, 92vw);
-      max-height: 88vh;
-      display: flex;
-      flex-direction: column;
-    }
-    .shop-header {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      margin-bottom: 6px;
-    }
-    .shop-title {
-      font-family: 'Press Start 2P', monospace;
-      font-size: 16px;
-      color: var(--slime);
-      text-shadow: 2px 2px 0 var(--ink);
-    }
-    .shop-coins {
-      font-family: 'Press Start 2P', monospace;
-      font-size: 11px;
-      color: var(--cream);
-      background: var(--panel-light);
-      border: 2px solid var(--ink);
-      box-shadow: 2px 2px 0 var(--ink);
-      padding: 8px 10px;
-    }
-    .shop-coins b { color: var(--gold); }
-    .shop-header #shopClose { margin-left: auto; }
-    .shop-sub { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
-    #shopMsg { color: var(--gold); font-size: 12px; min-height: 14px; margin: 0 0 10px; font-weight: 600; }
-    .shop-grid {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      overflow-y: auto;
-      padding: 4px;
-    }
-    .shop-section {
-      font-family: 'Press Start 2P', monospace;
-      font-size: 11px;
-      color: var(--gold);
-      letter-spacing: 0.5px;
-      padding: 6px 2px 2px;
-      border-bottom: 2px solid var(--panel-lighter);
-    }
-    .shop-grid-inner {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-      gap: 12px;
-    }
-    .shop-icon {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 34px;
-      color: var(--slime);
-      background: var(--panel);
-    }
-    .shop-lvl {
-      font-size: 10px;
-      color: var(--muted);
-      text-align: center;
-    }
-    .shop-card {
-      background: var(--panel-light);
-      border: 2px solid var(--ink);
-      box-shadow: 3px 3px 0 var(--ink);
-      padding: 10px 8px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-    }
-    .shop-card.is-equipped { border-color: var(--slime); box-shadow: 3px 3px 0 var(--slime-dark); }
-    /* Show only the first (front-facing idle) 64x64 frame of the sheet,
-       scaled up crisp — 72/64 = 1.125, so the whole 384x256 sheet scales to
-       432x288 and the top-left frame fills the 72x72 box. */
-    .shop-preview {
-      width: 72px;
-      height: 72px;
-      background-repeat: no-repeat;
-      background-position: 0 0;
-      background-size: 432px 288px;
-      image-rendering: pixelated;
-      background-color: var(--panel);
-      border: 2px solid var(--ink);
-    }
-    .shop-name {
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--cream);
-      text-align: center;
-    }
-    .shop-btn {
-      font-family: 'Press Start 2P', monospace;
-      font-size: 9px;
-      color: var(--ink);
-      background: var(--gold);
-      border: 2px solid var(--ink);
-      box-shadow: 2px 2px 0 var(--ink);
-      padding: 8px 6px;
-      width: 100%;
-      cursor: pointer;
-    }
-    .shop-btn:hover { background: #ffd370; }
-    .shop-btn:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--ink); }
-    .shop-btn.equip { background: var(--slime); }
-    .shop-btn.equip:hover { background: #9be870; }
-    .shop-btn.equipped { background: var(--panel); color: var(--slime); cursor: default; }
-    .shop-btn.equipped:active { transform: none; box-shadow: 2px 2px 0 var(--ink); }
-    .shop-btn.disabled { background: #4a5a4d; color: #8aa08d; cursor: not-allowed; }
-    .shop-btn.disabled:active { transform: none; box-shadow: 2px 2px 0 var(--ink); }
+#loginOverlay .login-box {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  background: var(--panel);
+  padding: 26px 30px 22px;
+  border: 2px solid var(--ink);
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100% - 32px);
+  overflow-y: auto;
+  --notch: 10px;
+  clip-path: polygon(
+    var(--notch) 0, calc(100% - var(--notch)) 0,
+    100% var(--notch), 100% calc(100% - var(--notch)),
+    calc(100% - var(--notch)) 100%, var(--notch) 100%,
+    0 calc(100% - var(--notch)), 0 var(--notch)
+  );
+  filter: drop-shadow(8px 8px 0 var(--ink));
+  animation: panel-in var(--t-menu) ease-out;
+}
+
+#loginOverlay .login-title {
+  font-family: var(--font-pixel);
+  font-size: 15px;
+  color: var(--slime);
+  text-align: center;
+  letter-spacing: 1px;
+  text-shadow: 2px 2px 0 var(--ink);
+  margin: 0 0 2px;
+}
+
+#loginOverlay .login-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* The three views share this column layout; only one is visible at a time. */
+#authView, #signedInView, #guestView {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+/* Sliding Sign In / Sign Up segmented toggle. */
+.seg-toggle {
+  position: relative;
+  display: block;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 2px solid var(--ink);
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.25);
+  user-select: none;
+}
+/* Buttons live in their own flex row so the slider's containing block is a
+   plain positioned block (some engines refuse to offset an absolutely
+   positioned child of a flex/grid container). */
+.seg-toggle .seg-btn-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+}
+.seg-toggle .seg-slider {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: calc(50% - 6px);
+  height: calc(100% - 8px);
+  background: var(--slime);
+  border: 2px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  /* Animate with transform, not `left`: this engine freezes a transitioned
+     `left`, but transitions `transform` fine on a block-parented element. */
+  transition: transform var(--t-menu) cubic-bezier(0.5, 1.6, 0.4, 1);
+  z-index: 0;
+}
+.seg-toggle[data-mode="signup"] .seg-slider {
+  transform: translateX(calc(100% + 4px));
+}
+.seg-toggle .seg-btn {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  background: transparent;
+  border: 0;
+  padding: 9px 6px;
+  cursor: pointer;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  transition: color var(--t-base) ease;
+}
+.seg-toggle .seg-btn.is-active {
+  color: var(--ink);
+  text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.auth-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.auth-fields input[type="text"],
+.auth-fields input[type="password"],
+#usernameInput {
+  font-family: var(--font-read);
+  font-size: 15px;
+  font-weight: 600;
+  padding: 11px 12px;
+  color: var(--ink);
+  background: var(--cream);
+  border: 2px solid var(--ink);
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.1), 3px 3px 0 var(--ink);
+  outline: none;
+  transition: box-shadow var(--t-base) ease, border-color var(--t-base) ease;
+}
+.auth-fields input:focus,
+#usernameInput:focus {
+  border-color: var(--slime-dark);
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.1), 3px 3px 0 var(--slime-dark);
+}
+.auth-fields input::placeholder,
+#usernameInput::placeholder { color: #7a8a7d; font-weight: 400; }
+#usernameInput { flex: 1 1 auto; min-width: 0; }
+
+.auth-color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+
+/* "or" divider between account login and guest play. */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+#signedInView .auth-status {
+  font-family: var(--font-read);
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  margin: 0;
+}
+#signedInView .auth-status b { color: var(--cream); }
+.name-swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--ink);
+  vertical-align: middle;
+  margin-left: 3px;
+}
+/* PLAY is the one dominant action on this screen. */
+#playBtn { font-size: 18px; padding: 18px; letter-spacing: 2px; }
+
+/* Controls reference: compact keycaps, not sentences. */
+.ctrl-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 7px 10px;
+}
+.ctrl-grid .ctrl-label {
+  font-family: var(--font-read);
+  font-size: 12px;
+  color: var(--muted);
+}
+.ctrl-grid .keycap { justify-self: start; }
+
+#loginOverlay .hint {
+  font-family: var(--font-read);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  text-align: center;
+  margin: 0;
+}
+#loginOverlay .hint b { color: var(--cream); font-weight: 600; }
+
+/* ==== Options ============================================================ */
+#optionsBtn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 60;
+}
+#optionsPanel {
+  position: absolute;
+  top: 58px;
+  right: 14px;
+  z-index: 60;
+  width: 320px;
+  max-width: calc(100vw - 28px);
+  max-height: calc(100vh - 72px);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 2px solid var(--ink);
+  box-shadow: 5px 5px 0 var(--ink);
+  padding: 14px;
+  color: var(--cream);
+  font-family: var(--font-read);
+  font-size: 13px;
+  animation: panel-in var(--t-menu) ease-out;
+}
+#optionsPanel .options-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+#optionsPanel .options-title {
+  font-family: var(--font-pixel);
+  font-size: 13px;
+  color: var(--slime);
+  letter-spacing: 1px;
+  text-shadow: 2px 2px 0 var(--ink);
+}
+#optionsPanel .options-section {
+  border-top: 2px solid rgba(255, 255, 255, 0.1);
+  padding: 12px 0 10px;
+}
+#optionsPanel .options-section:first-of-type { border-top: none; padding-top: 4px; }
+#optionsPanel .options-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 8px 0;
+}
+#optionsPanel .options-row > span {
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  color: var(--cream);
+}
+#optionsPanel .options-info {
+  font-family: var(--font-read);
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 10px;
+}
+#optionsPanel .options-hint {
+  font-family: var(--font-read);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 10px 0;
+}
+#optionsPanel .options-bindings { margin: 10px 0 12px; }
+#optionsPanel .binding-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  margin: 7px 0;
+}
+#optionsPanel .binding-label {
+  font-family: var(--font-read);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cream);
+}
+#optionsPanel .binding-row .keycap { min-width: 60px; }
+#optionsPanel #optResetBindings,
+#optionsPanel #optLogout { width: 100%; }
+/* The stream toggle flows as a normal full-width block inside the panel. */
+#twitchControls { display: block; width: 100%; }
+
+/* ==== Chat =============================================================== */
+/* Only YOU see this, while typing. The sent message everyone sees is drawn on
+   the canvas as a pixel speech bubble. Follows the player each frame via
+   positionChatInput(). */
+#chatInputWrap {
+  position: absolute;
+  display: none;
+  z-index: 15;
+  transform: translate(-50%, -100%);
+}
+#chatInput {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  color: var(--ink);
+  background: var(--cream);
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  padding: 10px;
+  width: 220px;
+  outline: none;
+}
+#chatInput:focus { border-color: var(--slime-dark); }
+#chatInput::placeholder { color: #7a8a7d; }
+
+/* When ON, a sent message is ALSO relayed to the real Twitch channel chat via
+   the server's StreamElements bot. */
+#twitchToggleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  color: var(--cream);
+  user-select: none;
+}
+#twitchToggleRow .tt-label {
+  background: var(--panel);
+  border: 2px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  padding: 6px 7px;
+  letter-spacing: 0.5px;
+}
+#twitchToggle {
+  width: 34px;
+  height: 18px;
+  border: 2px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  background: var(--panel-light);
+  cursor: pointer;
+  position: relative;
+  flex: none;
+}
+#twitchToggle .knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 14px;
+  height: 14px;
+  background: var(--muted);
+  transition: left 0.08s steps(2), background 0.08s;
+}
+#twitchToggle.on { background: var(--slime-dark); }
+#twitchToggle.on .knob { left: 17px; background: var(--gold); }
+#twitchToggle:focus-visible { outline: 3px solid var(--slime); outline-offset: 2px; }
+
+/* Pixel-step tail pointing down at your character. A square stub instead of a
+   smooth CSS triangle, to keep the retro blocky look. */
+#chatInputWrap::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -10px;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%);
+  background: var(--cream);
+  border: 2px solid var(--ink);
+  border-top: none;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+/* ==== Slime shop (press P) =============================================== */
+#shopOverlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 16, 11, 0.82);
+  z-index: 30;
+  font-family: var(--font-read);
+  animation: overlay-in var(--t-menu) ease-out;
+}
+#shopOverlay .shop-box {
+  background: var(--panel);
+  border: 2px solid var(--ink);
+  padding: 20px 22px 22px;
+  width: min(780px, 92vw);
+  max-height: calc(100% - 32px);
+  display: flex;
+  flex-direction: column;
+  --notch: 10px;
+  clip-path: polygon(
+    var(--notch) 0, calc(100% - var(--notch)) 0,
+    100% var(--notch), 100% calc(100% - var(--notch)),
+    calc(100% - var(--notch)) 100%, var(--notch) 100%,
+    0 calc(100% - var(--notch)), 0 var(--notch)
+  );
+  filter: drop-shadow(8px 8px 0 var(--ink));
+  animation: panel-in var(--t-menu) ease-out;
+}
+.shop-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.shop-title {
+  font-family: var(--font-pixel);
+  font-size: 16px;
+  color: var(--slime);
+  letter-spacing: 1px;
+  text-shadow: 2px 2px 0 var(--ink);
+}
+.shop-coins {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  padding: 8px 11px;
+}
+.shop-coins b { color: var(--gold); }
+.shop-header #shopClose { margin-left: auto; }
+.shop-sub {
+  font-family: var(--font-read);
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+#shopMsg {
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  line-height: 1.5;
+  color: var(--gold);
+  min-height: 12px;
+  margin: 0 0 8px;
+}
+.shop-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  /* Without min-height:0 a flex item won't shrink below its content, so the
+     box would outgrow its max-height instead of this list scrolling. */
+  min-height: 0;
+  padding: 4px;
+}
+.shop-section {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  color: var(--gold);
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 2px 8px;
+}
+.shop-section::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  flex: none;
+  background: var(--slime);
+  clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 100%, 0 100%, 0 25%);
+}
+.shop-section::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.1);
+}
+/* Equal-size slots on a consistent grid. */
+.shop-grid-inner {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+/* --- One upgrade / cosmetic slot -----------------------------------------
+   A single flat slot — icon, name, pips, blurb, footer. No nested boxes. */
+.slot {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto auto 1fr auto;
+  gap: 8px;
+  padding: 12px 10px 10px;
+  min-height: 182px;
+  background: var(--panel-light);
+  border: 2px solid var(--ink);
+  --notch: var(--notch-sm);
+  clip-path: polygon(
+    var(--notch) 0, calc(100% - var(--notch)) 0,
+    100% var(--notch), 100% calc(100% - var(--notch)),
+    calc(100% - var(--notch)) 100%, var(--notch) 100%,
+    0 calc(100% - var(--notch)), 0 var(--notch)
+  );
+  filter: drop-shadow(3px 3px 0 var(--ink));
+  transition: transform var(--t-base) ease, filter var(--t-base) ease,
+              background var(--t-base) ease, border-color var(--t-base) ease,
+              opacity var(--t-base) ease;
+}
+/* Selectable slots lift slightly on hover. */
+.slot.is-available:hover {
+  transform: translateY(-3px);
+  background: var(--panel-lighter);
+  border-color: var(--slime-dark);
+  filter: drop-shadow(3px 6px 0 var(--ink));
+}
+/* Owned / equipped / maxed: lime-edged, clearly yours. */
+.slot.is-owned { border-color: var(--slime-dark); }
+.slot.is-equipped { border-color: var(--slime); }
+/* Selected indicator — a slime blob in the corner. */
+.slot.is-equipped::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 10px;
+  height: 10px;
+  background: var(--slime);
+  border: 2px solid var(--ink);
+  clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 100%, 0 100%, 0 25%);
+}
+/* Unaffordable: subdued, never broken-looking. */
+.slot.is-locked { opacity: 0.55; }
+.slot.is-locked:hover { opacity: 0.8; }
+/* Fired once when a purchase/equip lands. */
+.slot.just-changed { animation: slime-flash var(--t-menu) ease-out; }
+
+.slot-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  font-size: 32px;
+  line-height: 1;
+  color: var(--slime);
+}
+/* Show only the first (front-facing idle) 64x64 frame of the sheet, scaled
+   crisp — the 384x256 sheet is scaled so that frame fills the 48px box. */
+.slot-preview {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto;
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  background-size: 288px 192px;
+  image-rendering: pixelated;
+}
+.slot-name {
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  line-height: 1.5;
+  letter-spacing: 0.5px;
+  color: var(--cream);
+  text-align: center;
+}
+.slot-desc {
+  font-family: var(--font-read);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  text-align: center;
+}
+.slot-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 26px;
+  padding-top: 8px;
+  border-top: 2px solid rgba(0, 0, 0, 0.22);
+}
+.slot-foot .stamp { margin-left: auto; }
+
+/* The BUY / EQUIP action inside a slot: text + chevron, not a heavy box. */
+.slot-action {
+  margin-left: auto;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  color: var(--gold);
+  background: transparent;
+  border: 0;
+  padding: 4px 2px;
+  cursor: pointer;
+  transition: color var(--t-base) ease, transform var(--t-fast) ease;
+}
+.slot-action::after { content: ' \203A'; }
+.slot-action:hover { color: var(--gold-light); transform: translateX(2px); }
+.slot-action:active { transform: translate(2px, 2px); }
+.slot-action:focus-visible { outline: 2px solid var(--slime); outline-offset: 2px; }
+.slot-action.equip { color: var(--slime); }
+.slot-action.equip:hover { color: #9be870; }
+.slot-action[disabled],
+.slot-action[disabled]:hover {
+  color: var(--muted);
+  cursor: not-allowed;
+  transform: none;
+}

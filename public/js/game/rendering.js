@@ -181,6 +181,10 @@
         drawOtherPlayer(otherPlayers[id]);
       }
 
+      // Mobs render under the local player so the player stays readable when
+      // they overlap during a fight.
+      if (typeof drawMobs === 'function') drawMobs();
+
       // While invisible YOU see a half-transparent slime; everyone else sees
       // nothing (their client skips drawing you — see drawOtherPlayer).
       const nowSpriteFx = performance.now();
@@ -261,6 +265,13 @@
         playObj.restore();
       } else {
         playObj.fillText(scoreText, chipX + chipPadX, chipY + chipH / 2 + 1);
+      }
+
+      // Health hearts sit in the HUD too, tucked under the score/coin chip in
+      // the top-left corner so they are always visible and never hidden behind
+      // the player sprite or the camera zoom.
+      if (typeof drawPlayerHearts === 'function') {
+        drawPlayerHearts(chipX + chipPadX, chipY + chipH + 10, 14, 5);
       }
 
       const now = performance.now();

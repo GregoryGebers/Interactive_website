@@ -42,24 +42,28 @@
     </div>
 
     <div class="options-section">
-      <h4>Character color</h4>
-      <div class="options-row"><span>Body</span><input type="color" id="optBodyColor" class="opt-color" value="#2b6b61" /></div>
-      <div class="options-row"><span>Beak &amp; feet</span><input type="color" id="optBeakColor" class="opt-color" value="#e8a23a" /></div>
+      <h4>Character colour</h4>
+      <!-- data-swatch turns the native colour input into a pixel swatch +
+           inline palette (js/game/uiKit.js). The input itself stays in the
+           DOM, so every existing read and listener keeps working. -->
+      <div class="options-row"><span>Body</span><input type="color" id="optBodyColor" data-swatch value="#2b6b61" /></div>
+      <div class="options-row"><span>Beak &amp; feet</span><input type="color" id="optBeakColor" data-swatch value="#e8a23a" /></div>
     </div>
 
     <div class="options-section">
       <h4>Account</h4>
       <div id="optAccountInfo" class="options-info"></div>
-      <button id="optLogout" class="pixel-btn pixel-btn-small">Log out</button>
+      <button id="optLogout" class="pixel-btn pixel-btn-small pixel-btn-ghost">Log out</button>
     </div>
 
     <div class="options-section">
       <h4>Controls</h4>
-      <label class="options-row"><span>Enable controller</span><input type="checkbox" id="optGamepad" /></label>
+      <!-- data-switch swaps the browser checkbox for an [ OFF | ON ] switch. -->
+      <div class="options-row"><span>Controller</span><input type="checkbox" id="optGamepad" data-switch /></div>
       <div id="optGamepadStatus" class="options-info"></div>
       <div id="optBindings" class="options-bindings"></div>
-      <p class="options-hint">Click a key or pad button to rebind it. Left column = keyboard, right column = controller button.</p>
-      <button id="optResetBindings" class="pixel-btn pixel-btn-small">Reset to defaults</button>
+      <p class="options-hint">Click a cap to rebind. Cream&nbsp;= keyboard, purple&nbsp;= controller.</p>
+      <button id="optResetBindings" class="pixel-btn pixel-btn-small pixel-btn-ghost">Reset to defaults</button>
     </div>
   </div>
 
@@ -100,7 +104,7 @@
                every sign-in. Only shown in Sign Up mode. -->
           <div id="authColorRow" class="auth-color-row" style="display:none;">
             <span>Slime name color</span>
-            <input id="authColor" type="color" value="#1e3fff" title="Name color" />
+            <input id="authColor" type="color" data-swatch data-swatch-label="Name" value="#1e3fff" title="Name colour" />
           </div>
         </div>
 
@@ -115,7 +119,7 @@
       <div id="signedInView" style="display:none;">
         <p id="signedInStatus" class="auth-status"></p>
         <button id="playBtn" class="pixel-btn">PLAY</button>
-        <button id="signOutBtn" class="pixel-btn pixel-btn-ghost pixel-btn-small">Sign out</button>
+        <button id="signOutBtn" class="pixel-btn pixel-btn-small pixel-btn-ghost">Sign out</button>
       </div>
 
       <!-- ===== Guest: browser-only progress. Also the fallback when Supabase
@@ -123,27 +127,28 @@
       <div id="guestView" style="display:none;">
         <div class="login-row">
           <input id="usernameInput" type="text" placeholder="Username" maxlength="20" />
-          <input id="usernameColor" type="color" value="#2b6b61" title="Duck body color" />
-          <input id="usernameBeakColor" type="color" value="#e8a23a" title="Beak &amp; feet color" />
+          <input id="usernameColor" type="color" data-swatch data-swatch-label="Body" value="#2b6b61" title="Body colour" />
+          <input id="usernameBeakColor" type="color" data-swatch data-swatch-label="Beak" value="#e8a23a" title="Beak &amp; feet colour" />
         </div>
         <button id="usernameBtn" class="pixel-btn">GO</button>
         <button id="backToAuth" class="pixel-btn pixel-btn-ghost pixel-btn-small">Back to sign in</button>
       </div>
 
-      <p class="hint">
-        <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys to move ·
-        <kbd>W</kbd>/<kbd>↑</kbd> to jump (hold for higher) ·
-        <kbd>SHIFT</kbd> to dash ·
-        <kbd>CTRL</kbd> to vanish ·
-        <kbd>SPACE</kbd> to punch ·
-        <kbd>T</kbd> to talk ·
-        <kbd>P</kbd> for the slime shop
-        <br><br>
-        When chatting, turn on <b>SAY IN TWITCH CHAT?</b> to send your message to Twitch chat too.
-        <br><br>
-        Use <b>Interact with Stream</b> in the top-right to control the stream background.
-        Then press play in the center of the stream to start it.
-      </p>
+      <!-- Controls as compact keycaps rather than a paragraph of prose. -->
+      <div class="login-controls">
+        <h4 class="ui-heading">Controls</h4>
+        <div class="ctrl-grid">
+          <span class="keycap">WASD</span><span class="ctrl-label">Move</span>
+          <span class="keycap">W</span><span class="ctrl-label">Jump — hold for higher</span>
+          <span class="keycap">Shift</span><span class="ctrl-label">Dash</span>
+          <span class="keycap">Ctrl</span><span class="ctrl-label">Vanish</span>
+          <span class="keycap">Space</span><span class="ctrl-label">Punch</span>
+          <span class="keycap">T</span><span class="ctrl-label">Chat</span>
+          <span class="keycap">P</span><span class="ctrl-label">Shop</span>
+        </div>
+      </div>
+
+      <p class="hint">Stream controls and rebinding live in <b>⚙ Options</b>, top-right.</p>
     </div>
   </div>
 
@@ -153,10 +158,10 @@
     <div class="shop-box">
       <div class="shop-header">
         <span class="shop-title">SLIME SHOP</span>
-        <span class="shop-coins">COINS <b id="shopCoins">0</b></span>
-        <button id="shopClose" class="pixel-btn pixel-btn-small">CLOSE</button>
+        <span class="shop-coins"><i class="coin"></i>COINS <b id="shopCoins">0</b></span>
+        <button id="shopClose" class="pixel-btn pixel-btn-small" title="Close (P)">CLOSE</button>
       </div>
-      <p class="shop-sub">Cosmetic skins and gameplay upgrades. Prices are configured per item. Coins come from your score. Press <b>P</b> to close.</p>
+      <p class="shop-sub">Spend coins earned during gameplay.</p>
       <p id="shopMsg"></p>
       <div id="shopGrid" class="shop-grid"></div>
     </div>
@@ -191,10 +196,13 @@
   <script src="/js/game/players.js"></script>
   <script src="/js/game/chat.js"></script>
   <script src="/js/game/combat.js"></script>
+  <script src="/js/game/mobNav.js"></script>
+  <script src="/js/game/mobs.js"></script>
   <script src="/js/game/loop.js"></script>
   <script src="/js/game/scene.js"></script>
   <script src="/js/game/rendering.js"></script>
   <script src="/js/game/input.js"></script>
   <script src="/js/game/options.js"></script>
+  <script src="/js/game/uiKit.js"></script>
 </body>
 </html>

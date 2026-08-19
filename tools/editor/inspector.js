@@ -47,6 +47,23 @@ function renderInspector() {
     html += decimalRow('Zoom ×', 'zz-zoom', z.zoom, 0.05, 0.25, 3);
     html += `<p class="insp-empty">Player-side only. 1.00× = base view, &gt;1 zooms in, &lt;1 zooms out. Last overlapping zone wins.</p>`;
     html += `<div class="insp-actions"><button class="btn ghost" data-act="copy">Copy</button><button class="btn danger" data-act="delete">Delete</button></div>`;
+  } else if (t === 'mobZone') {
+    const z = scene.mobZones[selection.index];
+    html += numRow('X', 'mz-x', z.x) + numRow('Y', 'mz-y', z.y);
+    html += numRow('Width', 'mz-w', z.width) + numRow('Height', 'mz-h', z.height);
+    html += `<p class="insp-empty">Mobs whose spawner sits inside this box are penned here — they never leave it, even to chase the player.</p>`;
+    html += `<div class="insp-actions"><button class="btn ghost" data-act="copy">Copy</button><button class="btn danger" data-act="delete">Delete</button></div>`;
+  } else if (t === 'spawner') {
+    const s = scene.spawners[selection.index];
+    html += numRow('X', 'sp-x', s.x) + numRow('Y', 'sp-y', s.y);
+    html += numRow('Width', 'sp-w', s.width) + numRow('Height', 'sp-h', s.height);
+    const def = mobTypeDef(s.mob || DEFAULT_MOB_TYPE);
+    html += selectRow('Mob', 'sp-mob', s.mob || DEFAULT_MOB_TYPE, MOB_TYPES.map(m => ({ value:m.id, label:m.name })));
+    html += numRow('Weight', 'sp-weight', s.chance == null ? DEFAULT_SPAWN_CHANCE : s.chance);
+    html += numRow('Damage', 'sp-damage', s.damage == null ? def.damage : s.damage);
+    html += `<p class="insp-empty">${def.note}</p>`;
+    html += `<p class="insp-empty"><b>One mob is alive at a time.</b> When it dies, the next is chosen from every spawner by <b>Weight</b> (relative odds) and appears at that spawner. <b>Damage</b> is the hearts removed per hit (mobs only hurt you when they attack). Put spawners inside a Mob Zone to keep the mob contained.</p>`;
+    html += `<div class="insp-actions"><button class="btn ghost" data-act="copy">Copy</button><button class="btn danger" data-act="delete">Delete</button></div>`;
   } else if (t === 'playerStart') {
     const p = scene.playerStart;
     html += numRow('X', 'ps-x', p.x) + numRow('Y', 'ps-y', p.y);
@@ -80,7 +97,7 @@ function renderWorldInspector() {
   inspBody.innerHTML = `
     <p class="insp-empty">Nothing selected. Click an object to edit it, or use the tools above to add new ones.</p>
     <div class="section-divider"></div>
-    <span class="badge">WORLD</span>
+    <span class="badge world">WORLD</span>
     ${numRow('Width', 'world-w', scene.world.width)}
     ${numRow('Height', 'world-h', scene.world.height)}
     <div class="section-divider"></div>
@@ -88,12 +105,15 @@ function renderWorldInspector() {
     ${decimalRow('Base zoom ×', 'camera-base-zoom', scene.camera.baseZoom, 0.05, 0.25, 3)}
     <p class="insp-empty"><b>${scene.camera.zoomZones.length}</b> zoom zones · only viewer.html uses these; the stream overlay stays unchanged.</p>
     <div class="section-divider"></div>
-    <span class="badge">GROUND</span>
+    <span class="badge ground">GROUND</span>
     ${numRow('Height', 'ground-h', scene.ground.height)}
     ${numRow('Tile W', 'ground-tw', scene.ground.tileWidth)}
     <div class="section-divider"></div>
     <p class="insp-empty">
       <b>${scene.props.length}</b> props · <b>${scene.hitboxes.length}</b> hitboxes · <b>${scene.coins.length}</b> coins
+    </p>
+    <p class="insp-empty">
+      <b>${scene.mobZones.length}</b> mob zones · <b>${scene.spawners.length}</b> spawners
     </p>
     <button class="btn gold" id="openShopFromInspector" style="width:100%;margin-top:8px">🛒 Open Shop Settings</button>`;
   wireInspector();
@@ -102,11 +122,15 @@ function renderWorldInspector() {
 }
 
 function numRow(label, id, val) {
-  return `<div class="insp-row"><label>${label}</label><input class="num" style="width:auto;flex:1" type="number" id="${id}" value="${Math.round(val || 0)}"></div>`;
+  return `<div class="insp-row"><label>${label}</label><input class="num" type="number" id="${id}" value="${Math.round(val || 0)}"></div>`;
 }
 function decimalRow(label, id, val, step=0.05, min=0, max=10) {
   const n = Number(val);
-  return `<div class="insp-row"><label>${label}</label><input class="num" style="width:auto;flex:1" type="number" id="${id}" step="${step}" min="${min}" max="${max}" value="${Number.isFinite(n) ? n : 1}"></div>`;
+  return `<div class="insp-row"><label>${label}</label><input class="num" type="number" id="${id}" step="${step}" min="${min}" max="${max}" value="${Number.isFinite(n) ? n : 1}"></div>`;
+}
+function selectRow(label, id, val, options) {
+  const opts = options.map(o => `<option value="${o.value}"${o.value === val ? ' selected' : ''}>${o.label}</option>`).join('');
+  return `<div class="insp-row"><label>${label}</label><select class="num" id="${id}">${opts}</select></div>`;
 }
 
 function wireInspector() {
@@ -128,6 +152,24 @@ function wireInspector() {
     bind('zz-x', v => z.x = v); bind('zz-y', v => z.y = v);
     bind('zz-w', v => z.width = Math.max(1, v)); bind('zz-h', v => z.height = Math.max(1, v));
     bind('zz-zoom', v => z.zoom = Math.max(0.25, Math.min(3, v || 1)));
+  } else if (selection && selection.type === 'mobZone') {
+    const z = scene.mobZones[selection.index];
+    bind('mz-x', v => z.x = v); bind('mz-y', v => z.y = v);
+    bind('mz-w', v => z.width = Math.max(1, v)); bind('mz-h', v => z.height = Math.max(1, v));
+  } else if (selection && selection.type === 'spawner') {
+    const s = scene.spawners[selection.index];
+    bind('sp-x', v => s.x = v); bind('sp-y', v => s.y = v);
+    bind('sp-w', v => s.width = Math.max(1, v)); bind('sp-h', v => s.height = Math.max(1, v));
+    bind('sp-weight', v => s.chance = Math.max(0, Math.min(1000, Math.round(v))));
+    bind('sp-damage', v => s.damage = Math.max(1, Math.min(10, Math.round(v))));
+    const mobSel = document.getElementById('sp-mob');
+    if (mobSel) mobSel.addEventListener('change', () => {
+      s.mob = mobSel.value || DEFAULT_MOB_TYPE;
+      // Switching type adopts that mob's default damage, then re-renders so the
+      // damage field and the type's description both reflect the new choice.
+      s.damage = mobTypeDef(s.mob).damage;
+      renderInspector();
+    });
   } else if (selection && selection.type === 'playerStart') {
     bind('ps-x', v => scene.playerStart.x = v); bind('ps-y', v => scene.playerStart.y = v);
   } else {

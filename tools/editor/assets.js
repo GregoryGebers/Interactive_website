@@ -56,7 +56,7 @@ function renderTree(node, topLevel) {
   folderNames.forEach((name, i) => {
     const child = node.folders[name];
     html += `<details class="tree-folder" ${topLevel && i < 4 ? 'open' : ''}>
-      <summary>📁 ${name}<span class="count">${countFiles(child)}</span></summary>
+      <summary>${name}<span class="count">${countFiles(child)}</span></summary>
       <div class="tree-children">${renderTree(child, false)}</div>
     </details>`;
   });

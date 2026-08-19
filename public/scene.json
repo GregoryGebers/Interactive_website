@@ -1123,14 +1123,16 @@
       "x": 110,
       "y": 430,
       "width": 20,
-      "height": 20
+      "height": 20,
+      "groupId": "g6"
     },
     {
       "src": "/assets/edit_assets/Tiles/Tile_31.png",
       "x": 130,
       "y": 430,
       "width": 20,
-      "height": 20
+      "height": 20,
+      "groupId": "g6"
     },
     {
       "src": "/assets/edit_assets/Tiles/Tile_08.png",
@@ -1235,28 +1237,32 @@
       "x": 570,
       "y": 340,
       "width": 20,
-      "height": 20
+      "height": 20,
+      "groupId": "g1"
     },
     {
       "src": "/assets/edit_assets/Tiles/Tile_19.png",
       "x": 570,
       "y": 360,
       "width": 20,
-      "height": 20
+      "height": 20,
+      "groupId": "g1"
     },
     {
       "src": "/assets/edit_assets/Tiles/Tile_21.png",
       "x": 630,
       "y": 360,
       "width": 20,
-      "height": 20
+      "height": 20,
+      "groupId": "g1"
     },
     {
       "src": "/assets/edit_assets/Tiles/Tile_49.png",
       "x": 630,
       "y": 340,
       "width": 20,
-      "height": 20
+      "height": 20,
+      "groupId": "g1"
     },
     {
       "src": "/assets/edit_assets/Tiles/Tile_31.png",
@@ -1333,7 +1339,8 @@
       "x": 610,
       "y": 360,
       "width": 20,
-      "height": 20
+      "height": 20,
+      "groupId": "g1"
     },
     {
       "src": "/assets/edit_assets/Tiles/Tile_28.png",
@@ -1382,7 +1389,8 @@
       "x": 590,
       "y": 360,
       "width": 20,
-      "height": 20
+      "height": 20,
+      "groupId": "g1"
     },
     {
       "src": "/assets/edit_assets/Trees/tree_1.png",
@@ -1513,9 +1521,10 @@
     {
       "src": "/assets/edit_assets/Stones/stone_1.png",
       "x": 90,
-      "y": 400,
+      "y": 401,
       "width": 60,
-      "height": 30
+      "height": 30,
+      "groupId": "g6"
     },
     {
       "src": "/assets/edit_assets/Grass/grass_1.png",
@@ -1550,7 +1559,8 @@
       "x": 570,
       "y": 330,
       "width": 20,
-      "height": 10
+      "height": 10,
+      "groupId": "g1"
     },
     {
       "src": "/assets/edit_assets/Grass/grass_1.png",
@@ -1712,6 +1722,150 @@
       "y": 460,
       "width": 20,
       "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_49.png",
+      "x": 2570,
+      "y": 370,
+      "width": 20,
+      "height": 20,
+      "groupId": "g3"
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_19.png",
+      "x": 2570,
+      "y": 390,
+      "width": 20,
+      "height": 20,
+      "groupId": "g3"
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_21.png",
+      "x": 2630,
+      "y": 390,
+      "width": 20,
+      "height": 20,
+      "groupId": "g3"
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_49.png",
+      "x": 2630,
+      "y": 370,
+      "width": 20,
+      "height": 20,
+      "groupId": "g3"
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_30.png",
+      "x": 2610,
+      "y": 390,
+      "width": 20,
+      "height": 20,
+      "groupId": "g3"
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_30.png",
+      "x": 2590,
+      "y": 390,
+      "width": 20,
+      "height": 20,
+      "groupId": "g3"
+    },
+    {
+      "src": "/assets/edit_assets/Grass/grass_1.png",
+      "x": 2570,
+      "y": 360,
+      "width": 20,
+      "height": 10,
+      "groupId": "g3"
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_29.png",
+      "x": 2420,
+      "y": 390,
+      "width": 20,
+      "height": 20,
+      "groupId": "g7"
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_30.png",
+      "x": 2440,
+      "y": 390,
+      "width": 20,
+      "height": 20,
+      "groupId": "g7"
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_31.png",
+      "x": 2460,
+      "y": 390,
+      "width": 20,
+      "height": 20,
+      "groupId": "g7"
+    },
+    {
+      "src": "/assets/edit_assets/Stones/stone_1.png",
+      "x": 2420,
+      "y": 361,
+      "width": 60,
+      "height": 30,
+      "groupId": "g7"
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_28.png",
+      "x": 2690,
+      "y": 370,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_31.png",
+      "x": 2810,
+      "y": 430,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_29.png",
+      "x": 2790,
+      "y": 430,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_28.png",
+      "x": 2870,
+      "y": 370,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_31.png",
+      "x": 2980,
+      "y": 330,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Tiles/Tile_29.png",
+      "x": 2960,
+      "y": 330,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "src": "/assets/edit_assets/Grass/grass_1.png",
+      "x": 2800,
+      "y": 420,
+      "width": 20,
+      "height": 10
+    },
+    {
+      "src": "/assets/edit_assets/Grass/grass_5.png",
+      "x": 2980,
+      "y": 320,
+      "width": 20,
+      "height": 10
     }
   ],
   "hitboxes": [
@@ -1764,22 +1918,25 @@
       "height": 20
     },
     {
-      "x": 570,
+      "x": 569,
       "y": 340,
       "width": 20,
-      "height": 40
+      "height": 40,
+      "groupId": "g1"
     },
     {
       "x": 590,
       "y": 360,
       "width": 40,
-      "height": 20
+      "height": 20,
+      "groupId": "g1"
     },
     {
       "x": 630,
       "y": 340,
       "width": 20,
-      "height": 40
+      "height": 40,
+      "groupId": "g1"
     },
     {
       "x": 500,
@@ -1821,7 +1978,8 @@
       "x": 90,
       "y": 430,
       "width": 60,
-      "height": 20
+      "height": 20,
+      "groupId": "g6"
     },
     {
       "x": 100,
@@ -1834,6 +1992,58 @@
       "y": 380,
       "width": 30,
       "height": 10
+    },
+    {
+      "x": 2570,
+      "y": 370,
+      "width": 20,
+      "height": 40,
+      "groupId": "g3"
+    },
+    {
+      "x": 2590,
+      "y": 390,
+      "width": 40,
+      "height": 20,
+      "groupId": "g3"
+    },
+    {
+      "x": 2630,
+      "y": 370,
+      "width": 20,
+      "height": 40,
+      "groupId": "g3"
+    },
+    {
+      "x": 2420,
+      "y": 390,
+      "width": 60,
+      "height": 20,
+      "groupId": "g7"
+    },
+    {
+      "x": 2960,
+      "y": 330,
+      "width": 40,
+      "height": 20
+    },
+    {
+      "x": 2870,
+      "y": 370,
+      "width": 20,
+      "height": 20
+    },
+    {
+      "x": 2790,
+      "y": 430,
+      "width": 40,
+      "height": 20
+    },
+    {
+      "x": 2690,
+      "y": 370,
+      "width": 20,
+      "height": 20
     }
   ],
   "coins": [
@@ -1867,11 +2077,66 @@
     },
     {
       "x": 600,
-      "y": 340
+      "y": 340,
+      "groupId": "g1"
     },
     {
       "x": 500,
       "y": 350
+    }
+  ],
+  "mobZones": [
+    {
+      "x": 2350,
+      "y": 160,
+      "width": 650,
+      "height": 337
+    }
+  ],
+  "spawners": [
+    {
+      "x": 2400,
+      "y": 430,
+      "width": 59,
+      "height": 50,
+      "mob": "water",
+      "count": 1,
+      "chance": 25,
+      "damage": 1,
+      "respawn": 10
+    },
+    {
+      "x": 2530,
+      "y": 430,
+      "width": 64,
+      "height": 50,
+      "mob": "electric",
+      "count": 1,
+      "chance": 13,
+      "damage": 2,
+      "respawn": 10
+    },
+    {
+      "x": 2680,
+      "y": 430,
+      "width": 89,
+      "height": 50,
+      "mob": "slime",
+      "count": 3,
+      "chance": 50,
+      "damage": 1,
+      "respawn": 10
+    },
+    {
+      "x": 2860,
+      "y": 430,
+      "width": 86,
+      "height": 52,
+      "mob": "devil",
+      "count": 3,
+      "chance": 12,
+      "damage": 1,
+      "respawn": 10
     }
   ]
 }

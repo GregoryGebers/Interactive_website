@@ -27,6 +27,12 @@ const gameState = {
   // property (gameState.currentCoin = ...) so importers always see the latest.
   currentCoin: null,
 
+  // The single live combat mob everyone shares (server-authoritative, like the
+  // coin but it moves). null while none is alive; `mobRespawnAt` is the epoch ms
+  // the next one should appear after a death.
+  currentMob: null,
+  mobRespawnAt: 0,
+
   lastMoveAt: {},
   lastChatAt: {},
   lastSwingAt: {},

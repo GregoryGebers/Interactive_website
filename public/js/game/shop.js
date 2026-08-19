@@ -56,10 +56,10 @@
     function rebuildUpgradeDefs() {
       const up = shopConfig.upgrades;
       const defs = [
-        { cat: 'jump',         title: 'Higher Jump',      icon: '⤒', costs: [...up.jump.costs],         blurb: `+${up.jump.pct}% jump / tier`, enabled: up.jump.enabled },
-        { cat: 'dash',         title: 'Stronger Dash',    icon: '»', costs: [...up.dash.costs],         blurb: `+${up.dash.pct}% dash / tier`, enabled: up.dash.enabled },
-        { cat: 'knockback',    title: 'Stronger Weapon',  icon: '⚔', costs: [...up.knockback.costs],    blurb: `+${up.knockback.pct}% knockback / tier`, enabled: up.knockback.enabled },
-        { cat: 'health',       title: 'More Health',      icon: '♥', costs: [...up.health.costs],       blurb: 'Tougher slime', enabled: up.health.enabled },
+        { cat: 'jump',         title: 'Higher Jump',      icon: '⤒', costs: [...up.jump.costs],         blurb: `+${up.jump.pct}% / level`, enabled: up.jump.enabled },
+        { cat: 'dash',         title: 'Stronger Dash',    icon: '»', costs: [...up.dash.costs],         blurb: `+${up.dash.pct}% / level`, enabled: up.dash.enabled },
+        { cat: 'knockback',    title: 'Stronger Weapon',  icon: '⚔', costs: [...up.knockback.costs],    blurb: `+${up.knockback.pct}% / level`, enabled: up.knockback.enabled },
+        { cat: 'health',       title: 'More Health',      icon: '♥', costs: [...up.health.costs],       blurb: '+1 heart / level', enabled: up.health.enabled },
         { cat: 'doubleJump',   title: 'Double Jump',      icon: '⇈', single: true, cost: up.doubleJump.costs[0] || 0, blurb: 'Jump again mid-air', enabled: up.doubleJump.enabled },
         { cat: 'invisibility', title: 'Invisibility',     icon: '◌', costs: [...up.invisibility.costs], blurb: 'Vanish · Ctrl', enabled: up.invisibility.enabled },
       ];
@@ -106,45 +106,80 @@
 
     function setShopMsg(t) { shopMsgEl.textContent = t || ''; }
 
+    // Slot key ('skin:<id>' / 'up:<cat>') to flash lime on the next render.
+    let shopFlashKey = null;
+
+    // ---- Slot rendering ------------------------------------------------------
+    // Every entry in the shop is the SAME object: one flat slot holding an icon,
+    // a name, a level track, a one-line blurb and a footer. The footer is either
+    // a price + action (still buyable) or a stamp (MAXED / OWNED / EQUIPPED) —
+    // never a disabled button, so an item you already have reads as finished
+    // rather than broken.
+
+    // Level track: ● ● ○ . An empty track keeps single-purchase and cosmetic
+    // slots the exact same height as tiered ones.
+    function pipsHTML(cur, max) {
+      if (!max) return `<div class="pips"></div>`;
+      let out = '';
+      for (let i = 0; i < max; i++) out += `<i class="${i < cur ? 'on' : ''}"></i>`;
+      return `<div class="pips">${out}</div>`;
+    }
+
+    function stampHTML(text, muted) {
+      return `<span class="stamp${muted ? ' stamp-mute' : ''}">${text}</span>`;
+    }
+
+    // Price + BUY. Below the player's balance it stays visible but inert, so
+    // the cost is still readable — the slot is dimmed by `is-locked` instead.
+    function priceHTML(cost, attrs, afford) {
+      return `<span class="coin-price${afford ? '' : ' is-poor'}"><i class="coin"></i>${cost}</span>
+        <button class="slot-action" ${attrs} ${afford ? '' : 'disabled'}>BUY</button>`;
+    }
+
+    function slotHTML(key, cls, icon, name, pips, desc, foot) {
+      return `<div class="slot ${cls}" data-key="${key}">
+        ${icon}
+        <div class="slot-name">${name}</div>
+        ${pips}
+        <div class="slot-desc">${desc}</div>
+        <div class="slot-foot">${foot}</div>
+      </div>`;
+    }
+
     function skinCardHTML(id, s) {
       const owned = ownedSkins.has(id);
       const equipped = equippedSkin === id;
-      let btn;
-      if (equipped) btn = `<button class="shop-btn equipped" disabled>EQUIPPED</button>`;
-      else if (owned) btn = `<button class="shop-btn equip" data-equip="${id}">EQUIP</button>`;
-      else {
-        const afford = player.score >= s.cost;
-        btn = `<button class="shop-btn buy ${afford ? '' : 'disabled'}" data-buy="${id}" ${afford ? '' : 'disabled'}>${s.cost} COINS</button>`;
-      }
-      return `<div class="shop-card ${equipped ? 'is-equipped' : ''}">
-        <div class="shop-preview" style="background-image:url('${s.idle}')"></div>
-        <div class="shop-name">${s.name}</div>
-        <div class="shop-lvl">${equipped ? 'Equipped' : owned ? 'Owned' : 'Cosmetic'}</div>
-        ${btn}</div>`;
+      const afford = player.score >= s.cost;
+      let cls, foot;
+      if (equipped) { cls = 'is-owned is-equipped'; foot = stampHTML('EQUIPPED'); }
+      else if (owned) { cls = 'is-owned is-available'; foot = `<button class="slot-action equip" data-equip="${id}">EQUIP</button>`; }
+      else { cls = afford ? 'is-available' : 'is-locked'; foot = priceHTML(s.cost, `data-buy="${id}"`, afford); }
+      const icon = `<div class="slot-icon slot-preview" style="background-image:url('${s.idle}')"></div>`;
+      return slotHTML('skin:' + id, cls, icon, s.name, pipsHTML(0, 0), 'Skin', foot);
     }
 
     function upgradeCardHTML(def) {
-      const icon = `<div class="shop-preview shop-icon">${def.icon}</div>`;
+      const icon = `<div class="slot-icon">${def.icon}</div>`;
+      const key = 'up:' + def.cat;
+
       if (def.single) {
         const owned = upgrades.doubleJump;
         const afford = player.score >= def.cost;
-        const btn = owned
-          ? `<button class="shop-btn equipped" disabled>OWNED</button>`
-          : `<button class="shop-btn buy ${afford ? '' : 'disabled'}" data-buyup="${def.cat}" data-tier="1" ${afford ? '' : 'disabled'}>${def.cost} COINS</button>`;
-        return `<div class="shop-card ${owned ? 'is-equipped' : ''}">${icon}
-          <div class="shop-name">${def.title}</div><div class="shop-lvl">${owned ? 'Owned' : def.blurb}</div>${btn}</div>`;
+        const cls = owned ? 'is-owned' : afford ? 'is-available' : 'is-locked';
+        const foot = owned ? stampHTML('OWNED') : priceHTML(def.cost, `data-buyup="${def.cat}" data-tier="1"`, afford);
+        return slotHTML(key, cls, icon, def.title, pipsHTML(owned ? 1 : 0, 1), def.blurb, foot);
       }
+
       const cur = upgrades[def.cat] || 0;
       const max = def.costs.length;
-      let btn;
-      if (cur >= max) btn = `<button class="shop-btn equipped" disabled>MAXED</button>`;
-      else {
-        const cost = def.costs[cur];
-        const afford = player.score >= cost;
-        btn = `<button class="shop-btn buy ${afford ? '' : 'disabled'}" data-buyup="${def.cat}" data-tier="${cur + 1}" ${afford ? '' : 'disabled'}>TIER ${cur + 1} · ${cost} COINS</button>`;
+      if (cur >= max) {
+        return slotHTML(key, 'is-owned', icon, def.title, pipsHTML(cur, max), def.blurb, stampHTML('MAXED'));
       }
-      return `<div class="shop-card ${cur >= max ? 'is-equipped' : ''}">${icon}
-        <div class="shop-name">${def.title}</div><div class="shop-lvl">Lvl ${cur}/${max} · ${def.blurb}</div>${btn}</div>`;
+      const cost = def.costs[cur];
+      const afford = player.score >= cost;
+      const cls = afford ? 'is-available' : 'is-locked';
+      const foot = priceHTML(cost, `data-buyup="${def.cat}" data-tier="${cur + 1}"`, afford);
+      return slotHTML(key, cls, icon, def.title, pipsHTML(cur, max), def.blurb, foot);
     }
 
     function renderShop() {
@@ -160,9 +195,17 @@
         if (!cards) return '';
         return `<div class="shop-section">${section.title}</div><div class="shop-grid-inner">${cards}</div>`;
       }).join('');
-      shopGridEl.querySelectorAll('[data-equip]').forEach(b => b.addEventListener('click', () => equipSkin(b.dataset.equip)));
+      shopGridEl.querySelectorAll('[data-equip]').forEach(b => b.addEventListener('click', () => { shopFlashKey = 'skin:' + b.dataset.equip; equipSkin(b.dataset.equip); }));
       shopGridEl.querySelectorAll('[data-buy]').forEach(b => b.addEventListener('click', () => buySkin(b.dataset.buy)));
       shopGridEl.querySelectorAll('[data-buyup]').forEach(b => b.addEventListener('click', () => buyUpgrade(b.dataset.buyup, Number(b.dataset.tier))));
+
+      // One quick lime flash on whatever just changed, then the key is spent —
+      // re-renders for unrelated reasons must not replay it.
+      if (shopFlashKey) {
+        const el = shopGridEl.querySelector(`.slot[data-key="${shopFlashKey}"]`);
+        if (el) el.classList.add('just-changed');
+        shopFlashKey = null;
+      }
     }
 
     function buySkin(id) {
@@ -206,8 +249,10 @@
         if (pendingBuy.type === 'skin') {
           const bought = SKINS[pendingBuy.id];
           setShopMsg((bought ? bought.name : 'Skin') + ' unlocked & equipped!');
+          shopFlashKey = 'skin:' + pendingBuy.id;
         } else {
           setShopMsg((UPGRADE_TITLE[pendingBuy.cat] || 'Upgrade') + ' purchased!');
+          shopFlashKey = 'up:' + pendingBuy.cat;
         }
         // The server follows this with `player_state`, which is the only place
         // that actually updates ownership and upgrade tiers.

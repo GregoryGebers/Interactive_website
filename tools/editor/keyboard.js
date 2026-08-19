@@ -18,7 +18,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelection(); return; }
   if (e.key === 'Escape') { if (shopSettingsOverlay.classList.contains('open')) { closeShopSettings(); return; } clearSelection(); activeAsset = null; document.querySelectorAll('.file-row.active').forEach(t => t.classList.remove('active')); renderInspector(); return; }
 
-  const map = { v: 'select', b: 'hitbox', z: 'zoomZone', c: 'coin', p: 'playerStart', h: 'pan' };
+  const map = { v: 'select', b: 'hitbox', z: 'zoomZone', m: 'mobZone', n: 'spawner', c: 'coin', p: 'playerStart', h: 'pan' };
   if (map[e.key.toLowerCase()]) { tool = map[e.key.toLowerCase()]; syncToolButtons(); return; }
 
   // Arrow-key nudge moves the entire selection/group together.

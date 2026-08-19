@@ -18,7 +18,28 @@ const scene = {
   props: [],      // { src, x, y, width, height, groupId? } — decoration
   hitboxes: [],   // { x, y, width, height, groupId? }       — collision
   coins: [],      // { x, y, groupId? }                      — coin spawn points
+  // Combat mobs. A mobZone is a rectangle mobs are confined to (they never
+  // leave it, even to chase the player). A spawner is a rectangle where mobs
+  // of one type appear. `slime` is the first supported type; more can be added
+  // to MOB_TYPES without touching the editor's zone/spawner plumbing.
+  mobZones: [],   // { x, y, width, height }                 — containment region
+  // { x, y, width, height, mob, count, chance, damage }     — mob spawn area
+  spawners: [],
 };
+
+// Mob types the spawner tool can place. Keep ids and default damage in sync
+// with the game's MOB_TYPES (public/js/game/mobs.js). Add rows here to expose
+// more mobs — nothing else in the editor needs to change.
+const MOB_TYPES = [
+  { id: 'slime',    name: 'Slime',          damage: 1, note: 'Leaps at you. Baseline knockback.' },
+  { id: 'water',    name: 'Water Slime',    damage: 1, note: 'Same damage as the basic slime, but launches you much further.' },
+  { id: 'electric', name: 'Electric Slime', damage: 2, note: 'Chain lightning — arcs to any player standing near the one it hits. Blinks a short distance to close gaps.' },
+  { id: 'devil',    name: 'Devil Slime',    damage: 1, note: 'Charges instead of swinging: winds up, then rams. Damage is its speed on impact — 1 up close, 2 at half speed, 3 at full speed. Damage above multiplies that whole ramp.' },
+];
+const DEFAULT_MOB_TYPE = 'slime';
+const DEFAULT_SPAWN_CHANCE = 100;
+const DEFAULT_RESPAWN_SECONDS = 10;   // 0 = killed mobs never come back
+function mobTypeDef(id) { return MOB_TYPES.find(m => m.id === id) || MOB_TYPES[0]; }
 
 // Public editor safety: on eberhex.com this page NEVER writes deployed files.
 // Drafts live in this browser and Test Draft passes a one-off snapshot to
@@ -130,6 +151,8 @@ function objectForRef(ref) {
   if (ref.type === 'hitbox') return scene.hitboxes[ref.index] || null;
   if (ref.type === 'coin') return scene.coins[ref.index] || null;
   if (ref.type === 'zoomZone') return scene.camera.zoomZones[ref.index] || null;
+  if (ref.type === 'mobZone') return scene.mobZones[ref.index] || null;
+  if (ref.type === 'spawner') return scene.spawners[ref.index] || null;
   if (ref.type === 'playerStart') return scene.playerStart;
   return null;
 }
@@ -142,7 +165,12 @@ function allGroupableRefs() {
   return out;
 }
 function allBoxSelectableRefs() {
-  return [...allGroupableRefs(), ...scene.camera.zoomZones.map((_, index) => ({ type:'zoomZone', index }))];
+  return [
+    ...allGroupableRefs(),
+    ...scene.camera.zoomZones.map((_, index) => ({ type:'zoomZone', index })),
+    ...scene.mobZones.map((_, index) => ({ type:'mobZone', index })),
+    ...scene.spawners.map((_, index) => ({ type:'spawner', index })),
+  ];
 }
 function rectsIntersect(a, b) {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;

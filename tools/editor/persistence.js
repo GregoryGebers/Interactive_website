@@ -26,6 +26,18 @@ function cleanScene() {
     }),
     hitboxes: scene.hitboxes.map(b => ({ x: r(b.x), y: r(b.y), width: r(b.width), height: r(b.height), ...(b.groupId ? { groupId:b.groupId } : {}) })),
     coins: scene.coins.map(c => ({ x: r(c.x), y: r(c.y), ...(c.groupId ? { groupId:c.groupId } : {}) })),
+    mobZones: scene.mobZones.map(z => ({ x: r(z.x), y: r(z.y), width: r(z.width), height: r(z.height) })),
+    spawners: scene.spawners.map(s => {
+      const mob = MOB_TYPES.some(m => m.id === s.mob) ? s.mob : DEFAULT_MOB_TYPE;
+      return {
+        x: r(s.x), y: r(s.y), width: r(s.width), height: r(s.height),
+        mob,
+        count: Math.max(1, Math.min(50, Math.round(Number(s.count) || 1))),
+        chance: Math.max(0, Math.min(100, Math.round(Number(s.chance ?? DEFAULT_SPAWN_CHANCE)))),
+        damage: Math.max(1, Math.min(10, Math.round(Number(s.damage) || mobTypeDef(mob).damage))),
+        respawn: Math.max(0, Math.min(600, Math.round(Number(s.respawn ?? DEFAULT_RESPAWN_SECONDS)))),
+      };
+    }),
   };
 }
 
@@ -200,6 +212,22 @@ function applySceneData(s) {
     .map(p => ({ src: p.src, x: +p.x || 0, y: +p.y || 0, width: +p.width || 0, height: +p.height || 0, ...(p.groupId ? {groupId:String(p.groupId)} : {}) })) : [];
   scene.hitboxes = Array.isArray(s.hitboxes) ? s.hitboxes.map(b => ({ x: +b.x || 0, y: +b.y || 0, width: +b.width || 20, height: +b.height || 20, ...(b.groupId ? {groupId:String(b.groupId)} : {}) })) : [];
   scene.coins = Array.isArray(s.coins) ? s.coins.map(c => ({ x: +c.x || 0, y: +c.y || 0, ...(c.groupId ? {groupId:String(c.groupId)} : {}) })) : [];
+  scene.mobZones = Array.isArray(s.mobZones) ? s.mobZones
+    .filter(z => z && Number.isFinite(Number(z.x)) && Number.isFinite(Number(z.y)))
+    .map(z => ({ x:+z.x, y:+z.y, width:Math.max(1, +z.width || 1), height:Math.max(1, +z.height || 1) })) : [];
+  scene.spawners = Array.isArray(s.spawners) ? s.spawners
+    .filter(sp => sp && Number.isFinite(Number(sp.x)) && Number.isFinite(Number(sp.y)))
+    .map(sp => {
+      const mob = MOB_TYPES.some(m => m.id === sp.mob) ? sp.mob : DEFAULT_MOB_TYPE;
+      return {
+        x:+sp.x, y:+sp.y, width:Math.max(1, +sp.width || 1), height:Math.max(1, +sp.height || 1),
+        mob,
+        count: Math.max(1, Math.min(50, Math.round(Number(sp.count) || 1))),
+        chance: Math.max(0, Math.min(100, Math.round(Number(sp.chance ?? DEFAULT_SPAWN_CHANCE)))),
+        damage: Math.max(1, Math.min(10, Math.round(Number(sp.damage) || mobTypeDef(mob).damage))),
+        respawn: Math.max(0, Math.min(600, Math.round(Number(sp.respawn ?? DEFAULT_RESPAWN_SECONDS)))),
+      };
+    }) : [];
   clearSelection();
   renderInspector();
 }

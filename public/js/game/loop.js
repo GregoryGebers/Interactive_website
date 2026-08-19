@@ -463,6 +463,9 @@
           socket.emit("coin_taken");
         }
       }
+
+      // ---- Mobs: patrol / chase / hop-attack, and damage the player -------
+      if (typeof updateMobs === 'function') updateMobs(deltaTime);
     }
 
     let GROUND_GRASS_HEIGHT = 14;

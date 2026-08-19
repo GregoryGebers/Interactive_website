@@ -1,9 +1,42 @@
 // ============================================================================
 //  TOOLBAR WIRING
 // ============================================================================
+
+// Shortcuts shown in the bottom status bar, per tool. Only the keys that
+// actually do something for the active tool are listed, so the bar stays short.
+const TOOL_HINTS = {
+  select:      ['Drag: Box Select', 'Shift: Add', 'Ctrl: Remove', 'Ctrl+G: Group',
+                'Ctrl+C/V: Copy', 'Arrows: Nudge', 'Del: Delete'],
+  hitbox:      ['Drag: Draw Box', 'Wheel: Zoom', 'V: Back to Select', 'Del: Delete'],
+  zoomZone:    ['Drag: Draw Zone', 'Zoom × set in Inspector', 'V: Back to Select'],
+  mobZone:     ['Drag: Draw Pen', 'Spawners inside are contained', 'V: Back to Select'],
+  spawner:     ['Drag: Draw Spawn Area', 'Mob / Weight in Inspector', 'V: Back to Select'],
+  coin:        ['Click: Place Coin', 'Snap: Align to Grid', 'V: Back to Select'],
+  playerStart: ['Click: Move Spawn', 'Only one spawn exists', 'V: Back to Select'],
+  pan:         ['Drag: Move View', 'Wheel: Zoom', 'Space: Temporary Pan', 'Fit: Frame World'],
+};
+const TOOL_NAMES = {
+  select: 'SELECT', hitbox: 'HITBOX', zoomZone: 'ZOOM ZONE', mobZone: 'MOB ZONE',
+  spawner: 'SPAWNER', coin: 'COIN', playerStart: 'SPAWN', pan: 'PAN',
+};
+
+function syncStatusBar() {
+  const nameEl = document.getElementById('statusTool');
+  const hintsEl = document.getElementById('statusHints');
+  if (!nameEl || !hintsEl) return;
+  nameEl.textContent = TOOL_NAMES[tool] || String(tool).toUpperCase();
+  hintsEl.innerHTML = (TOOL_HINTS[tool] || []).map(h => {
+    const [key, ...rest] = h.split(': ');
+    return rest.length
+      ? `<span class="hint"><b>${key}</b> ${rest.join(': ')}</span>`
+      : `<span class="hint">${key}</span>`;
+  }).join('');
+}
+
 function syncToolButtons() {
   document.querySelectorAll('.btn.tool').forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
   canvas.style.cursor = tool === 'pan' ? 'grab' : (tool === 'select' ? 'default' : 'crosshair');
+  syncStatusBar();
 }
 document.querySelectorAll('.btn.tool').forEach(b => {
   b.addEventListener('click', () => { tool = b.dataset.tool; syncToolButtons(); });
@@ -43,3 +76,25 @@ document.getElementById('importShopBtn').addEventListener('click', () => documen
 document.getElementById('sceneFileInput').addEventListener('change', e => importSceneFile(e.target));
 document.getElementById('shopFileInput').addEventListener('change', e => importShopFile(e.target));
 document.getElementById('testBtn').addEventListener('click', testDraft);
+
+// ---------------------------------------------------------------------------
+//  Compact File menu — the import/export/load actions live behind one button so
+//  they don't sit next to the everyday editing tools. The buttons themselves are
+//  unchanged; only their container moved, so the handlers above still apply.
+// ---------------------------------------------------------------------------
+const fileMenuWrap = document.getElementById('fileMenuWrap');
+const fileMenuBtn = document.getElementById('fileMenuBtn');
+function closeFileMenu() {
+  fileMenuWrap.classList.remove('open');
+  fileMenuBtn.setAttribute('aria-expanded', 'false');
+}
+fileMenuBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = fileMenuWrap.classList.toggle('open');
+  fileMenuBtn.setAttribute('aria-expanded', String(open));
+});
+document.addEventListener('click', (e) => { if (!fileMenuWrap.contains(e.target)) closeFileMenu(); });
+fileMenuWrap.querySelectorAll('.menu-item').forEach(item => item.addEventListener('click', closeFileMenu));
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeFileMenu(); });
+
+syncStatusBar();

@@ -10,6 +10,7 @@ const {
   KNOCKBACK_COMPONENT,
 } = require('../config/gameConfig');
 const { loadShopConfig, finiteNumber } = require('../services/shop.service');
+const { damageMobFromSwing } = require('./mob.handlers');
 
 // ---- Bat swing --------------------------------------------------------------
 // Space swings a bat. HIT DETECTION and the cooldown both run here on the
@@ -37,6 +38,10 @@ function registerCombatHandlers(socket, { io }) {
 
       // Everyone else needs to SEE the swing animation on this character.
       socket.broadcast.emit('player-swing', { id: socket.id, dir });
+
+      // The shared combat mob is server-authoritative too: a swing that reaches
+      // it deals damage / kills it here, and the death picks the next mob.
+      damageMobFromSwing(io, socket.id, dir, attacker);
 
       // Hit check against the server's own record of player positions: a circle
       // centered slightly in front of the swinger, on the facing side.

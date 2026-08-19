@@ -14,6 +14,8 @@ const { registerShopHandlers } = require('./shop.handlers');
 const { registerChatHandlers } = require('./chat.handlers');
 const { registerCombatHandlers } = require('./combat.handlers');
 const { registerEffectsHandlers } = require('./effects.handlers');
+const { startMobLoop } = require('./mob.handlers');
+const { snapshot: mobSnapshot } = require('../services/mob.service');
 
 // ---- AFK sweep --------------------------------------------------------------
 // Every few seconds, remove any player whose last real activity is older than
@@ -84,6 +86,9 @@ function registerSocketHandlers(io) {
     // lost while the async auth lookup below is still in flight.
     socket.emit('init', gameState.players);
     socket.emit('coin', gameState.currentCoin);
+    // Current shared mob (or null while respawning), so a joiner/overlay sees
+    // whatever everyone else already sees.
+    socket.emit('mob', mobSnapshot(gameState.currentMob));
 
     registerPlayerHandlers(socket, context);
     registerMovementHandlers(socket, context);
@@ -128,6 +133,7 @@ function registerSocketHandlers(io) {
   });
 
   startAfkSweep(io);
+  startMobLoop(io);
 }
 
 module.exports = { registerSocketHandlers };

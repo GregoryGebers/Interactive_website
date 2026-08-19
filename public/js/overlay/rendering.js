@@ -5,10 +5,13 @@
 
     updatePlayerInterpolation(deltaTime);
     updateSharedFx(deltaTime);
+    if (typeof updateOverlayMobs === 'function') updateOverlayMobs(deltaTime);
     setObjects(); // leaves the world-scale transform active
     // Dash smoke, double-jump ring, landing dust and invisibility shimmer sit
     // behind sprites just like they do in viewer.html.
     drawFxSpritesOverlay();
+    // Mobs render under the players, in the same scaled world space.
+    if (typeof drawOverlayMobs === 'function') drawOverlayMobs(ctx);
 
     // ---- Pass 1: sprites, in scaled WORLD space ----
     let high_score = -1;

@@ -75,6 +75,29 @@ canvas.addEventListener('mousedown', (e) => {
     return;
   }
 
+  if (tool === 'mobZone') {
+    const x = snapVal(wx), y = snapVal(wy);
+    scene.mobZones.push({ x, y, width: 0, height: 0 });
+    setSelections([{ type:'mobZone', index: scene.mobZones.length - 1 }]);
+    drag = { mode:'drawMobZone', startWX:x, startWY:y };
+    renderInspector();
+    return;
+  }
+
+  if (tool === 'spawner') {
+    const x = snapVal(wx), y = snapVal(wy);
+    scene.spawners.push({
+      x, y, width: 0, height: 0,
+      mob: DEFAULT_MOB_TYPE, count: 3,
+      chance: DEFAULT_SPAWN_CHANCE, damage: mobTypeDef(DEFAULT_MOB_TYPE).damage,
+      respawn: DEFAULT_RESPAWN_SECONDS,
+    });
+    setSelections([{ type:'spawner', index: scene.spawners.length - 1 }]);
+    drag = { mode:'drawSpawner', startWX:x, startWY:y };
+    renderInspector();
+    return;
+  }
+
   if (tool === 'coin') {
     const x = snapVal(wx - COIN_SIZE / 2), y = snapVal(wy - COIN_SIZE / 2);
     scene.coins.push({ x, y });
@@ -141,6 +164,16 @@ window.addEventListener('mousemove', (e) => {
     return;
   }
 
+  if (drag.mode === 'drawMobZone' || drag.mode === 'drawSpawner') {
+    const arr = drag.mode === 'drawMobZone' ? scene.mobZones : scene.spawners;
+    const z = arr[selection.index];
+    const x2 = snapVal(wx), y2 = snapVal(wy);
+    z.x = Math.min(drag.startWX, x2); z.y = Math.min(drag.startWY, y2);
+    z.width = Math.abs(x2 - drag.startWX); z.height = Math.abs(y2 - drag.startWY);
+    renderInspector();
+    return;
+  }
+
   if (drag.mode === 'resize') {
     const r = rectOf(selection.type, selection.index);
     const o = drag.orig;
@@ -176,6 +209,14 @@ window.addEventListener('mouseup', () => {
   if (drag && drag.mode === 'drawZoom') {
     const z = scene.camera.zoomZones[selection.index];
     if (z.width < 2 || z.height < 2) { z.width = z.width < 2 ? 200 : z.width; z.height = z.height < 2 ? 150 : z.height; }
+    renderInspector();
+  }
+  if (drag && (drag.mode === 'drawMobZone' || drag.mode === 'drawSpawner')) {
+    const arr = drag.mode === 'drawMobZone' ? scene.mobZones : scene.spawners;
+    const z = arr[selection.index];
+    const defW = drag.mode === 'drawMobZone' ? 300 : 120;
+    const defH = drag.mode === 'drawMobZone' ? 200 : 80;
+    if (z.width < 2 || z.height < 2) { z.width = z.width < 2 ? defW : z.width; z.height = z.height < 2 ? defH : z.height; }
     renderInspector();
   }
   drag = null;

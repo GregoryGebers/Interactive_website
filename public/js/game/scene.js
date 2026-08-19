@@ -60,10 +60,41 @@
         }
         // Only reposition the player to the scene's start if they haven't
         // already spawned and started playing.
-        if (!hasJoined && scene.playerStart &&
+        if (scene.playerStart &&
             Number.isFinite(scene.playerStart.x) && Number.isFinite(scene.playerStart.y)) {
-          player.x = scene.playerStart.x;
-          player.y = scene.playerStart.y;
+          // Always remember the spawn point so mob deaths can respawn the player.
+          if (typeof playerSpawnPoint === 'object') {
+            playerSpawnPoint.x = scene.playerStart.x;
+            playerSpawnPoint.y = scene.playerStart.y;
+          }
+          if (!hasJoined) {
+            player.x = scene.playerStart.x;
+            player.y = scene.playerStart.y;
+          }
+        }
+
+        // ---- Combat mobs (containment zones + spawners) ------------------
+        if (typeof mobZones !== 'undefined') {
+          mobZones = Array.isArray(scene.mobZones)
+            ? scene.mobZones.filter(z => z && Number.isFinite(Number(z.x)) && Number.isFinite(Number(z.y)))
+                .map(z => ({ x:Number(z.x), y:Number(z.y), width:Math.max(1, Number(z.width) || 1), height:Math.max(1, Number(z.height) || 1) }))
+            : [];
+          spawners = Array.isArray(scene.spawners)
+            ? scene.spawners.filter(s => s && Number.isFinite(Number(s.x)) && Number.isFinite(Number(s.y)))
+                .map(s => ({
+                  x:Number(s.x), y:Number(s.y),
+                  width:Math.max(1, Number(s.width) || 1), height:Math.max(1, Number(s.height) || 1),
+                  mob:String(s.mob || 'slime'),
+                  count:Math.max(1, Math.min(50, Math.round(Number(s.count) || 1))),
+                  // Older scenes have no chance/damage/respawn — default to
+                  // always-spawn, the mob type's own damage, and a 10s respawn.
+                  chance: s.chance == null ? 100 : Math.max(0, Math.min(100, Number(s.chance))),
+                  damage: Number(s.damage) > 0 ? Math.round(Number(s.damage)) : null,
+                  respawn: s.respawn == null ? 10 : Math.max(0, Math.min(600, Number(s.respawn))),
+                }))
+            : [];
+          // In the real game the mob is server-authoritative (see mobs.js);
+          // the local Test-Draft simulation spawns lazily from these spawners.
         }
         resizeCanvas(); // world size may have changed
       } catch (e) {

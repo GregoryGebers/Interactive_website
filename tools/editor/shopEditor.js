@@ -164,7 +164,7 @@ function deleteSelection() {
   refs.forEach(r => (byType[r.type] ||= []).push(r.index));
   for (const [type, indexes] of Object.entries(byType)) {
     indexes.sort((a,b) => b-a);
-    const arr = type === 'prop' ? scene.props : type === 'hitbox' ? scene.hitboxes : type === 'coin' ? scene.coins : type === 'zoomZone' ? scene.camera.zoomZones : null;
+    const arr = type === 'prop' ? scene.props : type === 'hitbox' ? scene.hitboxes : type === 'coin' ? scene.coins : type === 'zoomZone' ? scene.camera.zoomZones : type === 'mobZone' ? scene.mobZones : type === 'spawner' ? scene.spawners : null;
     if (!arr) continue;
     indexes.forEach(i => arr.splice(i, 1));
   }
@@ -178,6 +178,8 @@ function appendSceneObject(type, data) {
   else if (type === 'hitbox') { scene.hitboxes.push(clone); index = scene.hitboxes.length - 1; }
   else if (type === 'coin') { scene.coins.push(clone); index = scene.coins.length - 1; }
   else if (type === 'zoomZone') { scene.camera.zoomZones.push(clone); index = scene.camera.zoomZones.length - 1; }
+  else if (type === 'mobZone') { scene.mobZones.push(clone); index = scene.mobZones.length - 1; }
+  else if (type === 'spawner') { scene.spawners.push(clone); index = scene.spawners.length - 1; }
   return index >= 0 ? { type, index } : null;
 }
 

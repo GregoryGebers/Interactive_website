@@ -85,17 +85,95 @@ function render() {
     if (isSelectedRef('zoomZone', i) && selections.length === 1) drawSelection(z);
   });
 
+  // Mob containment zones — the box mobs are penned inside. Drawn under the
+  // spawners so a spawner sitting inside its zone stays readable.
+  scene.mobZones.forEach((z, i) => {
+    const sx = w2sx(z.x), sy = w2sy(z.y), sw = z.width * view.scale, sh = z.height * view.scale;
+    ctx.fillStyle = 'rgba(224,75,90,.08)'; ctx.fillRect(sx, sy, sw, sh);
+    ctx.strokeStyle = isSelectedRef('mobZone', i) ? '#7ed957' : 'rgba(232,110,124,.95)';
+    ctx.lineWidth = isSelectedRef('mobZone', i) ? 2.5 : 1.5; ctx.setLineDash([9,5]);
+    ctx.strokeRect(sx, sy, sw, sh); ctx.setLineDash([]);
+    ctx.fillStyle = '#ffb3bb'; ctx.font = 'bold 10px Inter, sans-serif'; ctx.textBaseline = 'top';
+    ctx.fillText('MOB ZONE', sx + 5, sy + 5);
+    if (isSelectedRef('mobZone', i) && selections.length === 1) drawSelection(z);
+  });
+
+  // Mob spawn areas — where a chosen mob type appears.
+  scene.spawners.forEach((s, i) => {
+    const sx = w2sx(s.x), sy = w2sy(s.y), sw = s.width * view.scale, sh = s.height * view.scale;
+    ctx.fillStyle = 'rgba(126,217,87,.14)'; ctx.fillRect(sx, sy, sw, sh);
+    ctx.strokeStyle = isSelectedRef('spawner', i) ? '#7ed957' : 'rgba(126,217,87,.95)';
+    ctx.lineWidth = isSelectedRef('spawner', i) ? 2.5 : 1.5; ctx.setLineDash([4,3]);
+    ctx.strokeRect(sx, sy, sw, sh); ctx.setLineDash([]);
+    const def = mobTypeDef(s.mob || DEFAULT_MOB_TYPE);
+    const chance = s.chance == null ? DEFAULT_SPAWN_CHANCE : s.chance;
+    const label = def.name.toUpperCase();
+    const sub = `weight ${chance} · ${s.damage == null ? def.damage : s.damage} dmg`;
+    ctx.fillStyle = '#dff5cf'; ctx.font = 'bold 10px Inter, sans-serif'; ctx.textBaseline = 'top';
+    ctx.fillText(label, sx + 5, sy + 5);
+    ctx.fillStyle = '#a9c99a'; ctx.font = '9px Inter, sans-serif';
+    ctx.fillText(sub, sx + 5, sy + 17);
+    if (isSelectedRef('spawner', i) && selections.length === 1) drawSelection(s);
+  });
+
   if (selections.length > 1) drawMultiSelectionBounds();
   drawMarquee();
 
   // Player start marker
   drawPlayerStart();
 
-  // World border
-  ctx.strokeStyle = '#5a7a63'; ctx.lineWidth = 2;
-  ctx.strokeRect(w2sx(0), w2sy(0), W * view.scale, H * view.scale);
+  drawWorldBounds();
 
   requestAnimationFrame(render);
+}
+
+// The playable area needs to read as a distinct "stage" sitting on the near-black
+// workspace: a hard border, corner brackets, ruler ticks outside the bounds and a
+// small caption. Everything here is drawn thin/dim so level artwork stays readable.
+function drawWorldBounds() {
+  const W = scene.world.width, H = scene.world.height;
+  const x1 = w2sx(0), y1 = w2sy(0);
+  const x2 = w2sx(W), y2 = w2sy(H);
+  const sw = x2 - x1, sh = y2 - y1;
+
+  // Ruler ticks just outside the top and left edges.
+  if (view.scale >= 0.2) {
+    const step = 100;
+    ctx.strokeStyle = 'rgba(126,217,87,.28)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = 0; x <= W; x += step) {
+      const major = x % 500 === 0;
+      ctx.moveTo(w2sx(x), y1 - (major ? 10 : 5)); ctx.lineTo(w2sx(x), y1);
+    }
+    for (let y = 0; y <= H; y += step) {
+      const major = y % 500 === 0;
+      ctx.moveTo(x1 - (major ? 10 : 5), w2sy(y)); ctx.lineTo(x1, w2sy(y));
+    }
+    ctx.stroke();
+  }
+
+  // Border: a dark outer stroke so it reads against light artwork, then the line.
+  ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 4;
+  ctx.strokeRect(x1, y1, sw, sh);
+  ctx.strokeStyle = '#6f9b78'; ctx.lineWidth = 2;
+  ctx.strokeRect(x1, y1, sw, sh);
+
+  // Corner brackets.
+  const c = Math.min(22, sw / 4, sh / 4);
+  ctx.strokeStyle = '#7ed957'; ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1 + c); ctx.lineTo(x1, y1); ctx.lineTo(x1 + c, y1);
+  ctx.moveTo(x2 - c, y1); ctx.lineTo(x2, y1); ctx.lineTo(x2, y1 + c);
+  ctx.moveTo(x1, y2 - c); ctx.lineTo(x1, y2); ctx.lineTo(x1 + c, y2);
+  ctx.moveTo(x2 - c, y2); ctx.lineTo(x2, y2); ctx.lineTo(x2, y2 - c);
+  ctx.stroke();
+
+  // Caption above the top-left corner, e.g. "WORLD 3000 x 500".
+  ctx.font = '9px "Press Start 2P", monospace';
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = 'rgba(126,217,87,.75)';
+  ctx.fillText(`WORLD ${W} × ${H}`, x1, y1 - 14);
+  ctx.textBaseline = 'top';
 }
 
 function drawGrid() {
