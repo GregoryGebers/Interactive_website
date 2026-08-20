@@ -1175,3 +1175,217 @@ body.stream-interactive::after {
   cursor: not-allowed;
   transform: none;
 }
+
+/* ==========================================================================
+   5. Touch — phones + tablets
+   --------------------------------------------------------------------------
+   Everything below is inert until js/game/touch.js adds .is-touch to <html>,
+   so the desktop build is byte-for-byte unchanged in behaviour.
+
+   The pad sits at z-index 8: above the canvas (5), below every dialog
+   (login 10, chat 15, shop 30, options 60) — see the layer list in section 3.
+   touch.js also display:none's it whenever one of those is open, because
+   synthetic key events bypass focus and would otherwise drive the character
+   from behind the menu.
+   ========================================================================== */
+#touchControls,
+#rotateNotice { display: none; }
+
+html.is-touch,
+html.is-touch body {
+  /* No rubber-banding or pull-to-refresh while thumbs are on the pad. */
+  overscroll-behavior: none;
+}
+
+.is-touch #touchControls {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;   /* only the buttons themselves take input */
+  touch-action: none;     /* no scroll / pinch-zoom started from the pad */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  /* Absolutely-positioned children resolve against the padding box, so this
+     keeps the clusters clear of notches and the home indicator. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.is-touch #touchControls.is-off { display: none; }
+
+.touch-cluster {
+  position: absolute;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+.touch-left  { left: 16px;  bottom: 16px; }
+.touch-right { right: 16px; bottom: 16px; }
+.touch-menu  { left: 16px;  top: 14px; gap: 8px; align-items: flex-start; }
+
+/* --- Pad buttons ---------------------------------------------------------
+   Same physical language as .pixel-btn: hard border, notched corners, an
+   offset shadow that the face drops into when pressed. Slightly translucent
+   at rest so the level stays readable underneath, fully opaque while held.
+   `.is-pressed` is driven by touch.js, not :active — a finger that slid onto
+   a button from a neighbour never fires :active. */
+.touch-btn {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-pixel);
+  line-height: 1;
+  letter-spacing: 0.5px;
+  color: var(--ink);
+  background: var(--gold);
+  border: 2px solid var(--ink);
+  --notch: 8px;
+  clip-path: polygon(
+    var(--notch) 0, calc(100% - var(--notch)) 0,
+    100% var(--notch), 100% calc(100% - var(--notch)),
+    calc(100% - var(--notch)) 100%, var(--notch) 100%,
+    0 calc(100% - var(--notch)), 0 var(--notch)
+  );
+  filter: drop-shadow(3px 3px 0 var(--ink));
+  opacity: 0.85;
+  transition: opacity var(--t-fast) ease, transform var(--t-fast) ease;
+}
+.touch-btn.is-pressed {
+  opacity: 1;
+  transform: translate(3px, 3px);
+  filter: none;
+  background: var(--gold-light);
+}
+
+/* Directional pad — dark, so the yellow action side reads as "do something"
+   and the left side as "go somewhere". */
+.touch-dpad {
+  width: 82px;
+  height: 82px;
+  font-size: 24px;
+  color: var(--cream);
+  background: var(--panel-lighter);
+}
+.touch-dpad.is-pressed { background: var(--slime-dark); }
+
+/* Jump is the button reached for constantly, so it is the biggest and the
+   only gold one on the right. */
+.touch-lg { width: 96px; height: 96px; font-size: 13px; }
+.touch-md {
+  width: 78px;
+  height: 78px;
+  font-size: 10px;
+  color: var(--ink);
+  background: var(--slime);
+}
+.touch-md.is-pressed { background: #9be870; }
+.touch-sm {
+  width: 62px;
+  height: 62px;
+  font-size: 9px;
+  color: var(--cream);
+  background: var(--panel-light);
+  --notch: 6px;
+}
+.touch-sm.is-pressed { background: var(--panel-lighter); }
+
+.touch-pill {
+  height: 38px;
+  padding: 0 14px;
+  font-size: 9px;
+  color: var(--cream);
+  background: var(--panel);
+  --notch: var(--notch-sm);
+}
+.touch-pill.is-pressed { background: var(--panel-light); }
+
+/* Short landscape viewports (most phones held sideways are ~360-420px tall):
+   shrink the pad so it never eats the play area. */
+@media (max-height: 430px) {
+  .touch-dpad { width: 66px; height: 66px; font-size: 20px; }
+  .touch-lg   { width: 78px; height: 78px; font-size: 11px; }
+  .touch-md   { width: 64px; height: 64px; font-size: 9px; }
+  .touch-sm   { width: 52px; height: 52px; font-size: 8px; }
+  .touch-pill { height: 32px; padding: 0 11px; font-size: 8px; }
+  .touch-cluster { gap: 9px; }
+  .touch-left  { left: 12px;  bottom: 12px; }
+  .touch-right { right: 12px; bottom: 12px; }
+}
+
+/* --- Touch-sized dialogs -------------------------------------------------
+   The join, options and shop panels were laid out for a desktop window; in
+   landscape on a phone there are only ~400px of height to work with, so they
+   scroll instead of overflowing. The keyboard keycap legend is dropped
+   entirely — there is no keyboard to describe. */
+.is-touch #loginOverlay .login-box {
+  max-height: calc(100vh - 20px);
+  overflow-y: auto;
+  padding: 18px 20px 16px;
+  gap: 11px;
+}
+.is-touch #loginOverlay .login-controls { display: none; }
+.is-touch #optionsPanel {
+  width: min(320px, 92vw);
+  max-height: calc(100vh - 76px);
+  overflow-y: auto;
+}
+.is-touch #shopOverlay .shop-box { max-height: calc(100vh - 20px); }
+
+/* --- Portrait: stop and rotate ------------------------------------------
+   The real lock (fullscreen + screen.orientation.lock) is attempted by
+   touch.js and works on Android. Where the platform refuses it — every iOS
+   browser — this is the enforcement: the game is fully covered until the
+   device is turned. */
+@media (orientation: portrait) {
+  .is-touch #touchControls { display: none; }
+  .is-touch #rotateNotice {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: var(--ink);
+  }
+}
+
+#rotateNotice .rotate-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-width: 300px;
+  text-align: center;
+}
+#rotateNotice .rotate-title {
+  margin: 0;
+  font-family: var(--font-pixel);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--gold);
+}
+#rotateNotice .rotate-sub {
+  margin: 0;
+  font-family: var(--font-read);
+  font-size: 12px;
+  color: var(--muted);
+}
+/* A chunky phone outline that tips a quarter-turn and holds, on a loop, so
+   the instruction reads without any text. */
+#rotateNotice .rotate-phone {
+  width: 62px;
+  height: 104px;
+  border: 4px solid var(--slime);
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 3px var(--ink), 0 0 0 3px var(--ink);
+  animation: rotate-hint 2.4s ease-in-out infinite;
+}
+@keyframes rotate-hint {
+  0%, 30%   { transform: rotate(0deg); }
+  55%, 100% { transform: rotate(-90deg); }
+}

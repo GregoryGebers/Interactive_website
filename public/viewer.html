@@ -2,6 +2,13 @@
 <html>
 <head>
   <title>Eberhex game</title>
+  <!-- viewport-fit=cover lets the canvas run under a phone notch; the touch pad
+       pads itself back out with env(safe-area-inset-*). user-scalable=no kills
+       double-tap zoom, which otherwise fires on every rapid jump tap. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="icon" type="image/png" href="/assets/favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -167,6 +174,45 @@
     </div>
   </div>
 
+  <!-- ===== Phones + tablets ==================================================
+       Both blocks are display:none until js/game/touch.js puts .is-touch on
+       <html>, so desktop is completely unaffected.
+
+       #rotateNotice covers the screen in portrait. On Android the game also
+       asks for fullscreen + a real orientation lock on the first tap; iOS
+       allows neither, so there this notice IS the landscape enforcement.
+
+       Every pad button names a gameplay ACTION, not a key. touch.js looks the
+       action's current binding up at press time, so rebinding in Options moves
+       the touch button too. ===== -->
+  <div id="rotateNotice">
+    <div class="rotate-box">
+      <div class="rotate-phone" aria-hidden="true"></div>
+      <p class="rotate-title">ROTATE YOUR DEVICE</p>
+      <p class="rotate-sub">EberHex is played in landscape.</p>
+      <button id="rotateFullscreen" class="pixel-btn pixel-btn-small">Go fullscreen</button>
+    </div>
+  </div>
+
+  <div id="touchControls">
+    <div class="touch-cluster touch-menu">
+      <button class="touch-btn touch-pill" data-touch-action="chat" aria-label="Chat">CHAT</button>
+      <button class="touch-btn touch-pill" data-touch-action="shop" aria-label="Shop">SHOP</button>
+    </div>
+
+    <div class="touch-cluster touch-left">
+      <button class="touch-btn touch-dpad" data-touch-action="moveLeft" aria-label="Move left">◀</button>
+      <button class="touch-btn touch-dpad" data-touch-action="moveRight" aria-label="Move right">▶</button>
+    </div>
+
+    <div class="touch-cluster touch-right">
+      <button class="touch-btn touch-sm" data-touch-action="vanish" aria-label="Vanish">HIDE</button>
+      <button class="touch-btn touch-sm" data-touch-action="dash" aria-label="Dash">DASH</button>
+      <button class="touch-btn touch-md" data-touch-action="punch" aria-label="Punch">PUNCH</button>
+      <button class="touch-btn touch-lg" data-touch-action="jump" aria-label="Jump">JUMP</button>
+    </div>
+  </div>
+
   <script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
   <!-- Supabase JS (accounts / login). Loaded before the game modules so
        auth.js can use it. If this CDN is blocked the login panel hides and the
@@ -202,6 +248,7 @@
   <script src="/js/game/scene.js"></script>
   <script src="/js/game/rendering.js"></script>
   <script src="/js/game/input.js"></script>
+  <script src="/js/game/touch.js"></script>
   <script src="/js/game/options.js"></script>
   <script src="/js/game/uiKit.js"></script>
 </body>
