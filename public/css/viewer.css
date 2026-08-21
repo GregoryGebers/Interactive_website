@@ -1334,6 +1334,14 @@ html.is-touch body {
   overflow-y: auto;
 }
 .is-touch #shopOverlay .shop-box { max-height: calc(100vh - 20px); }
+/* The shop is modal, but the gear and its panel sit at z-index 60 — above the
+   overlay's 30. On a short viewport (any phone in landscape) the shop box goes
+   full height, which puts its CLOSE button right underneath the gear, so the
+   tap opened Options instead of closing the shop. Take both out of the way for
+   as long as the shop is up; shop.js toggles the class. Any inline display the
+   options panel is carrying survives, so it comes back as it was. */
+body.shop-open #optionsBtn,
+body.shop-open #optionsPanel { display: none; }
 
 /* --- Portrait: stop and rotate ------------------------------------------
    The real lock (fullscreen + screen.orientation.lock) is attempted by

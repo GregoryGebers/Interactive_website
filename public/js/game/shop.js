@@ -274,10 +274,14 @@
       setShopMsg('');
       renderShop();
       shopOverlay.style.display = 'flex';
+      // The options gear/panel outrank the overlay in the stacking order, and on
+      // a short screen they sit right on top of CLOSE — see viewer.css.
+      document.body.classList.add('shop-open');
     }
     function closeShop() {
       shopOpen = false;
       shopOverlay.style.display = 'none';
+      document.body.classList.remove('shop-open');
       canvas.focus();
     }
     function toggleShop() { shopOpen ? closeShop() : openShop(); }

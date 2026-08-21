@@ -271,7 +271,7 @@
       // the top-left corner so they are always visible and never hidden behind
       // the player sprite or the camera zoom.
       if (typeof drawPlayerHearts === 'function') {
-        drawPlayerHearts(chipX + chipPadX, chipY + chipH + 10, 14, 5);
+        drawPlayerHearts(chipX + chipPadX, chipY + chipH + 10, 21, 7);
       }
 
       const now = performance.now();
