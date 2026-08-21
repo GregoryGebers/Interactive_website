@@ -213,11 +213,18 @@
     </div>
   </div>
 
-  <script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
+  <!-- Socket.IO client, served by THIS server. It used to point at one specific
+       Render deployment by absolute URL, which meant that single host controlled
+       the game's JS everywhere and every other deployment (including local dev)
+       broke whenever it slept. -->
+  <script src="/socket.io/socket.io.js"></script>
   <!-- Supabase JS (accounts / login). Loaded before the game modules so
-       auth.js can use it. If this CDN is blocked the login panel hides and the
-       game falls back to guest play. -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+       auth.js can use it. Vendored from the lockfile-pinned npm package into
+       public/js/vendor/ (refresh with `npm run vendor`) rather than pulled from
+       a CDN at a floating major version: same-origin, no third-party script
+       execution, and no external outage can break login. If it fails to load
+       the login panel hides and the game falls back to guest play. -->
+  <script src="/js/vendor/supabase.js"></script>
 
   <!--
     Player client, split into scope-sharing modules loaded IN ORDER. These are

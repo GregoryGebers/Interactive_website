@@ -23,11 +23,15 @@ through this private helper. Test Draft is still isolated and does not join the
 live multiplayer server.
 """
 
+import datetime
+import glob
 import json
 import mimetypes
 import os
+import shutil
 import sys
 import threading
+import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -46,6 +50,74 @@ SHOP_PATH = os.path.join(PUBLIC_DIR, "shop.json")
 HOST = "127.0.0.1"  # localhost only — NOT 0.0.0.0. This is what keeps it local.
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 MAX_BODY = 4 * 1024 * 1024  # 4 MB cap on a scene save
+
+# How many timestamped backups of scene.json / shop.json to keep. These files are
+# hand-authored level design representing a lot of manual work, and this server
+# is the only thing that overwrites them.
+BACKUP_KEEP = 10
+BACKUP_DIR = os.path.join(ROOT, ".editor-backups")
+
+
+def is_local_origin(origin, host_header):
+    """Is this request coming from the editor page itself?
+
+    Binding to 127.0.0.1 stops the INTERNET reaching this server, but it does
+    NOT stop a malicious page in the owner's own browser from POSTing here: a
+    form with enctype="text/plain" is a "simple request", so no CORS preflight
+    protects it, and json.loads happily parses the body. That would silently
+    overwrite the level design. So writes require an Origin we recognise.
+
+    A missing Origin is allowed: curl/scripted use is legitimate here, and a
+    browser always sends one on a cross-site POST.
+    """
+    if not origin:
+        return True
+    try:
+        parsed = urllib.parse.urlparse(origin)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    if parsed.hostname not in ("127.0.0.1", "localhost", "::1"):
+        return False
+    # Same port as the one we are actually serving on.
+    if host_header and parsed.netloc != host_header:
+        return False
+    return True
+
+
+def backup_then_write(path, payload):
+    """Write JSON to `path` without ever leaving a truncated file behind.
+
+    open(path, "w") truncates immediately, so a crash or a full disk mid-write
+    destroys the previous contents. Write to a temp file in the same directory
+    and os.replace() it into place instead — that is atomic on both POSIX and
+    Windows. A timestamped copy of the previous version is kept first.
+    """
+    if os.path.isfile(path):
+        try:
+            os.makedirs(BACKUP_DIR, exist_ok=True)
+            stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            name = os.path.basename(path)
+            shutil.copy2(path, os.path.join(BACKUP_DIR, f"{name}.{stamp}.bak"))
+            # Prune oldest, keeping the most recent BACKUP_KEEP.
+            existing = sorted(glob.glob(os.path.join(BACKUP_DIR, f"{name}.*.bak")))
+            for stale in existing[:-BACKUP_KEEP]:
+                try:
+                    os.remove(stale)
+                except OSError:
+                    pass
+        except OSError as e:
+            # A failed backup must not block the save, but the owner should know.
+            print(f"[backup] WARNING: could not back up {path}: {e}")
+
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+        f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
 
 
 def list_assets():
@@ -234,6 +306,22 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404, "Not found")
             return
 
+        # ---- Cross-site write protection ----------------------------------
+        # See is_local_origin(): binding to localhost does not stop a malicious
+        # page in the owner's browser from posting here.
+        if not is_local_origin(self.headers.get("Origin"), self.headers.get("Host")):
+            print(f"[security] rejected cross-origin write from {self.headers.get('Origin')}")
+            self._send_json({"error": "Cross-origin writes are not allowed."}, 403)
+            return
+
+        # A cross-site form POST can only send text/plain, multipart or
+        # urlencoded — never application/json. Requiring JSON means any such
+        # attempt is rejected even before the Origin check above.
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype != "application/json":
+            self._send_json({"error": "Content-Type must be application/json."}, 415)
+            return
+
         length = int(self.headers.get("Content-Length") or 0)
         if length <= 0 or length > MAX_BODY:
             self._send_json({"error": "Bad or too-large body."}, 400)
@@ -250,9 +338,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json({"error": err}, 400)
                 return
             try:
-                with open(SHOP_PATH, "w", encoding="utf-8") as f:
-                    json.dump(payload, f, indent=2)
-                    f.write("\n")
+                backup_then_write(SHOP_PATH, payload)
             except OSError as e:
                 self._send_json({"error": f"Could not write shop.json: {e}"}, 500)
                 return
@@ -266,8 +352,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         try:
-            with open(SCENE_PATH, "w", encoding="utf-8") as f:
-                json.dump(payload, f, indent=2)
+            backup_then_write(SCENE_PATH, payload)
         except OSError as e:
             self._send_json({"error": f"Could not write scene.json: {e}"}, 500)
             return

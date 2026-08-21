@@ -132,12 +132,47 @@
       });
     }
 
+    // ---- The single render loop ---------------------------------------------
+    // EXACTLY ONE rAF chain may ever be in flight. `gameLoop` re-schedules
+    // itself, so every extra requestAnimationFrame(gameLoop) starts a second
+    // permanent, self-sustaining chain that renders the whole world again on
+    // every frame. Asset loaders used to do exactly that (one per image), which
+    // meant 15-30 full draws per frame. They now all call startGameLoop(),
+    // which is idempotent. Never call requestAnimationFrame(gameLoop) directly.
+    // `var`, not `let`, deliberately: every asset loader calls startGameLoop()
+    // from an image onload, and these are plain global-scope scripts. If loop.js
+    // ever fails to run to completion (one broken dependency earlier in the
+    // script list is enough), a `let` would leave this in the temporal dead zone
+    // and turn every onload into a second, confusing ReferenceError. `var` is
+    // hoisted as undefined, which the guard below reads as "not running".
+    var loopRunning = false;
+    function startGameLoop() {
+      if (loopRunning) return;
+      loopRunning = true;
+      lastTime = performance.now();
+      requestAnimationFrame(gameLoop);
+    }
+    window.startGameLoop = startGameLoop;
+
+    // A backgrounded tab resumes with a multi-second gap. Feeding that raw into
+    // the physics step would move the player far enough to tunnel through
+    // collision geometry in a single frame, so cap it (the server clamps
+    // position, but only after the client has already mispredicted).
+    const MAX_FRAME_DELTA = 0.1;
+
     function gameLoop(currentTime) {
-      const deltaTime = (currentTime - lastTime)/1000;
+      const deltaTime = Math.min((currentTime - lastTime) / 1000, MAX_FRAME_DELTA);
       lastTime = currentTime;
 
-      update(deltaTime);
-      draw();
+      // With only one chain left, an exception here would permanently freeze
+      // the game — previously the redundant chains masked that. Log and keep
+      // the loop alive instead.
+      try {
+        update(deltaTime);
+        draw();
+      } catch (err) {
+        console.error('[loop] frame error (loop kept alive):', err);
+      }
 
       requestAnimationFrame(gameLoop);
     }

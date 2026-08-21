@@ -53,7 +53,8 @@
       }
 
       socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, facing: player.facing, username:player.username, color:player.color, beakColor: player.beakColor, emote: player.action, skin: player.skin, invisible: player.invisible });
-      draw();
+      // No draw() here — the rAF loop repaints within ~16ms. Calling it inline
+      // forced a second full render on every keydown/keyup.
     });
 
     canvas.addEventListener('keyup', e => {
@@ -72,7 +73,7 @@
       if (bindingHasKey('punch', key)) spaceHeld = false;
 
       socket.emit("move", { x: player.x , y: player.y , frameCount: animations.frameCount, frameIndex: animations.currentFrame, frameRow:animations.frameRow, facing: player.facing, username:player.username, color:player.color, beakColor: player.beakColor, emote: player.action, skin: player.skin, invisible: player.invisible });
-      draw();
+      // See the keydown handler: the rAF loop already repaints.
     });
 
-    requestAnimationFrame(gameLoop);
+    startGameLoop();

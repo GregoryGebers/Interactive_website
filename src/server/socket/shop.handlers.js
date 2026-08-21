@@ -55,6 +55,7 @@ function registerShopHandlers(socket, { io }) {
       buyer.score = score - price;
       gameState.lastActivityAt[socket.id] = Date.now(); // buying counts as activity
 
+      gameState.stats.purchases++;
       socket.emit('buy_result', { ok: true, score: buyer.score, item, tier, skinId });
       io.emit('player-move', { id: socket.id, ...buyer });
       pushPersistentState(socket); // persist balance + ownership/tier immediately

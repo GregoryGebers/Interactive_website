@@ -23,8 +23,8 @@
       const s = SKINS[key];
       sheets = { idle: new Image(), run: new Image() };
       sheets.idle.src = s.idle; sheets.run.src = s.run;
-      sheets.idle.onload = () => requestAnimationFrame(draw);
-      sheets.run.onload = () => requestAnimationFrame(draw);
+      sheets.idle.onload = () => { if (typeof startOverlayLoop === "function") startOverlayLoop(); };
+      sheets.run.onload = () => { if (typeof startOverlayLoop === "function") startOverlayLoop(); };
       skinSheetCache[key] = sheets;
     }
     const want = action === 'run' ? sheets.run : sheets.idle;
@@ -37,18 +37,18 @@
 
   const boximg = new Image();
   boximg.src = '/assets/obstacles/box_1.png';
-  boximg.onload = () => requestAnimationFrame(draw);
+  boximg.onload = () => { if (typeof startOverlayLoop === "function") startOverlayLoop(); };
 
   const coinImg = new Image();
   coinImg.src = '/assets/obstacles/coin.png';
   coinImg.onload = () => {
-    requestAnimationFrame(draw);
+    if (typeof startOverlayLoop === "function") startOverlayLoop();
   }
 
   const grassImg = new Image();
   grassImg.src = '/assets/obstacles/grass.png';
   grassImg.onload = () => {
-    requestAnimationFrame(draw);
+    if (typeof startOverlayLoop === "function") startOverlayLoop();
   }
 
   // Bat sprite is drawn VERTICALLY (grip at the bottom) — the swing code

@@ -43,6 +43,28 @@ const gameState = {
   lastPlayerFxAt: {},
   lastActivityAt: {},
   pendingRemoval: {},
+
+  // When each socket actually joined the world. The Twitch relay uses this to
+  // refuse sockets that connect, join and immediately start spamming — see
+  // RELAY_MIN_ACCOUNT_AGE_MS. Cleared with the rest of a player's bookkeeping.
+  joinedAt: {},
+  // socket.id -> array of epoch-ms timestamps of relayed messages, trimmed to
+  // the rolling budget window in chat.handlers.js.
+  relayHistory: {},
+
+  // ---- Counters for /health --------------------------------------------------
+  // Render's free tier discards logs, so without these there is no way to answer
+  // "how busy was it" or "did someone abuse the Twitch relay" after the fact.
+  stats: {
+    peakPlayers: 0,
+    totalJoins: 0,
+    chatMessages: 0,
+    relaysSent: 0,
+    purchases: 0,
+    authFailures: 0,
+    afkRemovals: 0,
+    rejectedOrigins: 0,
+  },
 };
 
 module.exports = gameState;

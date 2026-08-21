@@ -8,6 +8,26 @@ const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || '';
 const IS_PRODUCTION = NODE_ENV === 'production';
 
+// ---- Cross-origin access ----------------------------------------------------
+// Socket.IO used to accept connections from ANY origin, which let any web page
+// drive this server: spawn players, spam chat, and (worst) push text into the
+// host's real Twitch chat through the relay. The deployed client always connects
+// same-origin, so an allowlist costs nothing. Comma-separated, e.g.
+//   ALLOWED_ORIGINS=https://game.example.com,https://www.example.com
+// Requests with no Origin header (same-origin, curl, OBS) are always allowed;
+// the localhost editor ports are allowed separately in app.js.
+const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+// ---- Twitch relay kill switch -----------------------------------------------
+// The relay speaks with the host's real StreamElements bot credentials, so abuse
+// costs the streamer their Twitch account standing, not just this server. This
+// flag lets the host turn it off from the Render dashboard during an incident
+// without waiting for a code deploy. Unset means enabled (previous behaviour).
+const TWITCH_RELAY_ENABLED = String(process.env.TWITCH_RELAY_ENABLED || 'true').toLowerCase() !== 'false';
+
 // Persistent player state lives in a signed HttpOnly cookie (see
 // utils/crypto.js). The secret must never reach the browser. If it is missing
 // or too short, persistence is deliberately disabled rather than silently
@@ -59,6 +79,8 @@ module.exports = {
   PORT,
   NODE_ENV,
   IS_PRODUCTION,
+  ALLOWED_ORIGINS,
+  TWITCH_RELAY_ENABLED,
   PLAYER_STATE_SECRET,
   PERSISTENCE_ENABLED,
   SUPABASE_URL,

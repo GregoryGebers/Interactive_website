@@ -54,13 +54,13 @@
     const box_1_img = new Image();
     box_1_img.src = '/assets/obstacles/box_1.png';
     box_1_img.onload = () => {
-      requestAnimationFrame(gameLoop);
+      if (typeof startGameLoop === "function") startGameLoop();
     }
 
     const trampoline_img = new Image();
     trampoline_img.src = '/assets/obstacles/trampoline.png';
     trampoline_img.onload = () => {
-      requestAnimationFrame(gameLoop);
+      if (typeof startGameLoop === "function") startGameLoop();
     }
 
     // Player character art (the duck) is loaded by duck.js — one strip per
@@ -68,13 +68,13 @@
     const coinImg = new Image();
     coinImg.src = '/assets/obstacles/coin.png';
     coinImg.onload = () => {
-      requestAnimationFrame(gameLoop);
+      if (typeof startGameLoop === "function") startGameLoop();
     }
 
     const grassImg = new Image();
     grassImg.src = '/assets/obstacles/grass.png';
     grassImg.onload = () => {
-      requestAnimationFrame(gameLoop);
+      if (typeof startGameLoop === "function") startGameLoop();
     }
 
     // Local player animation state, driven by duck.js (setClip / tickPlayerAnim

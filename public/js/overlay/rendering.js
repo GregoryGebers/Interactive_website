@@ -75,7 +75,6 @@
       }
     }
 
-    requestAnimationFrame(draw);
     if (high_user) {
       // Centered under the scaled world (which is WORLD_HEIGHT*WORLD_SCALE
       // pixels tall), instead of the old hardcoded spot tuned for the
@@ -91,6 +90,8 @@
       ctx.strokeText("High Score: " + high_user + " -- " + high_score, hsX, hsY);
       ctx.fillText("High Score: " + high_user + " -- " + high_score, hsX, hsY);
     }
+
+    requestAnimationFrame(draw);
   }
 
   function setObjects() {
@@ -116,4 +117,23 @@
       }
   }
 
-  requestAnimationFrame(draw);
+  // ---- The single overlay render loop ---------------------------------------
+  // EXACTLY ONE rAF chain may ever be in flight. `draw` re-schedules itself, so
+  // every extra requestAnimationFrame(draw) starts a second permanent chain that
+  // re-renders the whole world each frame. The asset loaders used to do that once
+  // per image — and skins.js did it twice per skin that ever appeared, so the
+  // overlay got permanently slower as players equipped cosmetics. This matters
+  // most here: the overlay runs on the streamer's encoding machine.
+  // Never call requestAnimationFrame(draw) directly; use startOverlayLoop().
+  // `var`, not `let` — see the matching note in public/js/game/loop.js. Asset
+  // loaders in earlier scripts call this from image onload handlers.
+  var overlayLoopRunning = false;
+  function startOverlayLoop() {
+    if (overlayLoopRunning) return;
+    overlayLoopRunning = true;
+    lastFrameTime = performance.now();
+    requestAnimationFrame(draw);
+  }
+  window.startOverlayLoop = startOverlayLoop;
+
+  startOverlayLoop();

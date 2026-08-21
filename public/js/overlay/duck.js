@@ -19,7 +19,7 @@
   for (const name in DUCK_ANIM) {
     const im = new Image();
     im.src = DUCK_ANIM[name].src;
-    im.onload = () => { if (typeof draw === 'function') requestAnimationFrame(draw); };
+    im.onload = () => { if (typeof startOverlayLoop === 'function') startOverlayLoop(); };
     duckImages[name] = im;
   }
 

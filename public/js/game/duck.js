@@ -21,13 +21,15 @@
     const DUCK_FRAME = 64;
 
     // Preload every wired clip. Kick the game loop on each load, exactly like the
-    // other asset loaders — redundant requestAnimationFrame calls are harmless
-    // because gameLoop re-schedules itself.
+    // other asset loaders. startGameLoop() is idempotent — that matters, because
+    // gameLoop re-schedules ITSELF, so calling requestAnimationFrame(gameLoop)
+    // here once per image (as this used to) started one extra permanent render
+    // chain per clip.
     const duckImages = {};
     for (const name in DUCK_ANIM) {
       const im = new Image();
       im.src = DUCK_ANIM[name].src;
-      im.onload = () => { if (typeof gameLoop === 'function') requestAnimationFrame(gameLoop); };
+      im.onload = () => { if (typeof startGameLoop === 'function') startGameLoop(); };
       duckImages[name] = im;
     }
 

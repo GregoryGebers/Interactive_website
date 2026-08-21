@@ -65,10 +65,29 @@ function collapseRepeats(s) {
 // where each non-letter matches any single optional letter, and test it
 // against the word list. Only kicks in for tokens that actually contain
 // non-letters, so ordinary words never take this path.
+// Every `[a-z]?` in the built pattern is an independent optional group, so a
+// token with many non-letters makes the engine explore combinatorially many
+// ways to match a short word — and this runs against EVERY word in the list,
+// for every token, on the event loop. These caps keep the work bounded no
+// matter what a player types. Real evasions ("f4ck", "a$$hole", "s.h.i.t") are
+// short and use a handful of substitutions, so nothing legitimate is lost.
+const MAX_WILDCARD_TOKEN_LENGTH = 24;
+const MAX_WILDCARDS = 8;
+
+// Compiled patterns are reused: chat is repetitive, and building a RegExp is
+// far more expensive than a Map lookup.
+const wildcardRegexCache = new Map();
+const WILDCARD_CACHE_MAX = 500;
+
 function wildcardRegexFor(token) {
   const lower = String(token).toLowerCase();
+  if (lower.length > MAX_WILDCARD_TOKEN_LENGTH) return null;
+
+  const cached = wildcardRegexCache.get(lower);
+  if (cached !== undefined) return cached;
+
   let pattern = '';
-  let hasWildcard = false;
+  let wildcards = 0;
   let letterCount = 0;
   for (const ch of lower) {
     if (ch >= 'a' && ch <= 'z') {
@@ -76,13 +95,22 @@ function wildcardRegexFor(token) {
       letterCount++;
     } else {
       pattern += '[a-z]?';
-      hasWildcard = true;
+      wildcards++;
     }
   }
+
   // Need at least a couple of real letters, or something like "!!" would match
-  // half the list.
-  if (!hasWildcard || letterCount < 2) return null;
-  return new RegExp('^' + pattern + '$');
+  // half the list; and refuse tokens that are mostly wildcards.
+  const re = (!wildcards || letterCount < 2 || wildcards > MAX_WILDCARDS)
+    ? null
+    : new RegExp('^' + pattern + '$');
+
+  if (wildcardRegexCache.size >= WILDCARD_CACHE_MAX) {
+    const oldest = wildcardRegexCache.keys().next().value;
+    if (oldest !== undefined) wildcardRegexCache.delete(oldest);
+  }
+  wildcardRegexCache.set(lower, re);
+  return re;
 }
 
 function isBadToken(token) {

@@ -51,7 +51,7 @@ function normalizeCosts(value, fallback) {
 function normalizeShopConfig(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
   const srcUp = src.upgrades && typeof src.upgrades === 'object' ? src.upgrades : {};
-  const out = JSON.parse(JSON.stringify(DEFAULT_SHOP_CONFIG));
+  const out = structuredClone(DEFAULT_SHOP_CONFIG);
 
   const srcCos = src.cosmetics && typeof src.cosmetics === 'object' ? src.cosmetics : {};
   const srcItems = srcCos.items && typeof srcCos.items === 'object' ? srcCos.items : null;
@@ -88,17 +88,66 @@ function normalizeShopConfig(raw) {
   return out;
 }
 
-/**
- * Load + normalize shop.json from disk, falling back to defaults on any error.
- * Re-reads on every call so the deployed config can change without a restart.
- */
-function loadShopConfig() {
+// ---- Config cache -----------------------------------------------------------
+// loadShopConfig() is called on every purchase, every price lookup and — worst —
+// once per player hit inside the combat loop. Each call used to be a synchronous
+// readFileSync + JSON.parse + a deep clone of the defaults, i.e. blocking disk
+// I/O on the event loop during combat.
+//
+// The hot-reload-without-restart behaviour is deliberate and preserved: the
+// cache is invalidated by the file's mtime, so editing shop.json still takes
+// effect within STAT_DEBOUNCE_MS without touching the process. We only stat the
+// file (cheap) rather than reading and parsing it (not cheap), and at most once
+// per debounce window.
+const STAT_DEBOUNCE_MS = 5000;
+let cachedConfig = null;
+let cachedMtimeMs = -1;
+let lastStatAt = 0;
+
+function readShopConfigFromDisk() {
   try {
     return normalizeShopConfig(JSON.parse(fs.readFileSync(SHOP_PATH, 'utf8')));
   } catch (e) {
     console.warn('[shop] could not load shop.json — using defaults:', e.message);
     return normalizeShopConfig(DEFAULT_SHOP_CONFIG);
   }
+}
+
+/**
+ * Load + normalize shop.json, cached until the file's mtime changes.
+ * Callers may mutate the returned object freely only if they clone it first —
+ * it is shared. Every current caller treats it as read-only.
+ */
+function loadShopConfig() {
+  const now = Date.now();
+
+  if (cachedConfig && now - lastStatAt < STAT_DEBOUNCE_MS) {
+    return cachedConfig;
+  }
+  lastStatAt = now;
+
+  let mtimeMs = -1;
+  try {
+    mtimeMs = fs.statSync(SHOP_PATH).mtimeMs;
+  } catch (_) {
+    // Missing/unreadable file: fall through and let the reader log + default.
+  }
+
+  if (cachedConfig && mtimeMs === cachedMtimeMs) {
+    return cachedConfig;
+  }
+
+  cachedConfig = readShopConfigFromDisk();
+  cachedMtimeMs = mtimeMs;
+  return cachedConfig;
+}
+
+// Drop the cache (used by tests, which rewrite shop.json faster than mtime
+// resolution can distinguish).
+function invalidateShopConfigCache() {
+  cachedConfig = null;
+  cachedMtimeMs = -1;
+  lastStatAt = 0;
 }
 
 /**
@@ -126,5 +175,6 @@ module.exports = {
   normalizeCosts,
   normalizeShopConfig,
   loadShopConfig,
+  invalidateShopConfigCache,
   priceOf,
 };

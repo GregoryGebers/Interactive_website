@@ -101,8 +101,8 @@
   const idleimg = new Image();
   idleimg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Idle/Slime1_Idle_body.png';
   
-  idleimg.onload = () => requestAnimationFrame(draw);
+  idleimg.onload = () => { if (typeof startOverlayLoop === "function") startOverlayLoop(); };
 
   const walkimg = new Image();
   walkimg.src = '/assets/characters/craftpix-net-879657-free-slime-mobs-pixel-art-top-down-sprite-pack/PNG/Slime1/Run/Slime1_Run_body.png';
-  walkimg.onload = () => requestAnimationFrame(draw);
+  walkimg.onload = () => { if (typeof startOverlayLoop === "function") startOverlayLoop(); };

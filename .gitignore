@@ -9,3 +9,6 @@ Thumbs.db
 # Local env — NEVER commit secrets (PLAYER_STATE_SECRET, SE_JWT_TOKEN_*, etc.)
 .env
 .env.*
+
+# Editor auto-backups of scene.json / shop.json (local safety net)
+.editor-backups/

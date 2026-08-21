@@ -10,7 +10,9 @@
 </head>
 <body style="margin:0; background:transparent;">
 <canvas id="overlay" width="1920" height="1080" style="position:absolute; image-rendering:pixelated;"></canvas>
-<script src="https://interactive-website-9620.onrender.com/socket.io/socket.io.js"></script>
+<!-- Served by THIS server (was an absolute URL to one specific Render deployment,
+     which broke every other deployment whenever that host slept). -->
+<script src="/socket.io/socket.io.js"></script>
 <!-- Overlay, split into scope-sharing modules loaded IN ORDER (classic scripts,
      one shared global scope). rendering.js starts the draw loop last. -->
 <script src="/js/overlay/net.js"></script>

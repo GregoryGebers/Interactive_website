@@ -14,7 +14,7 @@ const { registerShopHandlers } = require('./shop.handlers');
 const { registerChatHandlers } = require('./chat.handlers');
 const { registerCombatHandlers } = require('./combat.handlers');
 const { registerEffectsHandlers } = require('./effects.handlers');
-const { startMobLoop } = require('./mob.handlers');
+const { startMobLoop, stopMobLoop } = require('./mob.handlers');
 const { snapshot: mobSnapshot } = require('../services/mob.service');
 
 // ---- AFK sweep --------------------------------------------------------------
@@ -23,8 +23,10 @@ const { snapshot: mobSnapshot } = require('../services/mob.service');
 // so viewer.html and overlay.html both clear the character with zero extra
 // client logic. The kicked player also gets a private 'afk-removed' so their
 // own screen can show the rejoin prompt.
+let afkTimer = null;
+
 function startAfkSweep(io) {
-  setInterval(() => {
+  afkTimer = setInterval(() => {
     const now = Date.now();
     for (const id in gameState.players) {
       const last = gameState.lastActivityAt[id] || 0;
@@ -37,12 +39,28 @@ function startAfkSweep(io) {
         delete gameState.lastChatAt[id];
         delete gameState.lastSwingAt[id];
         delete gameState.invulnerableUntil[id];
+        delete gameState.joinedAt[id];
+        delete gameState.relayHistory[id];
+        gameState.stats.afkRemovals++;
         io.emit('remove-player', id);
         io.to(id).emit('afk-removed');
         console.log(`[afk] removed ${id} after ${Math.round((now - last) / 1000)}s of inactivity`);
       }
     }
   }, AFK_SWEEP_INTERVAL_MS);
+  // Never hold the process open during shutdown just to run a sweep.
+  if (afkTimer.unref) afkTimer.unref();
+}
+
+/**
+ * Stop the AFK sweep and the mob tick. Called from the shutdown path so the
+ * process can exit cleanly instead of relying on the force-exit timeout, and so
+ * neither loop keeps mutating state (or emitting) while sockets are closing.
+ */
+function stopBackgroundLoops() {
+  if (afkTimer) clearInterval(afkTimer);
+  afkTimer = null;
+  stopMobLoop();
 }
 
 /**
@@ -109,6 +127,7 @@ function registerSocketHandlers(io) {
         try {
           const user = await verifyAccessToken(authToken);
           if (!user) {
+            gameState.stats.authFailures++;
             console.log(`[auth] ${socket.id} presented an invalid/expired token; treating as guest`);
             return;
           }
@@ -136,4 +155,4 @@ function registerSocketHandlers(io) {
   startMobLoop(io);
 }
 
-module.exports = { registerSocketHandlers };
+module.exports = { registerSocketHandlers, stopBackgroundLoops };

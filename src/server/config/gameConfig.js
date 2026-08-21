@@ -37,6 +37,18 @@ const MIN_MOVE_INTERVAL_MS = 15;
 const MAX_CHAT_LENGTH = 100;
 const MIN_CHAT_INTERVAL_MS = 1000; // at most 1 message/second/player
 
+// ---- Twitch relay budget ----------------------------------------------------
+// Relaying speaks with the HOST'S REAL Twitch account, so abuse costs the
+// streamer their account standing. These limits are deliberately much stricter
+// than the in-game chat limit above, which only exists for readability.
+//
+// A socket must have been playing for this long before it may relay at all,
+// which is what stops a bot that connects, joins and immediately spams.
+const RELAY_MIN_ACCOUNT_AGE_MS = 30 * 1000;
+// ...and then each player may relay at most N messages per rolling window.
+const RELAY_BUDGET_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+const RELAY_BUDGET_PER_WINDOW = 5;
+
 // Player FX: rate-limit each effect type independently so a legitimate dash
 // followed immediately by a jump/land is not dropped, while a modified client
 // still cannot spam one animation every frame.
@@ -90,6 +102,9 @@ module.exports = {
   MIN_MOVE_INTERVAL_MS,
   MAX_CHAT_LENGTH,
   MIN_CHAT_INTERVAL_MS,
+  RELAY_MIN_ACCOUNT_AGE_MS,
+  RELAY_BUDGET_WINDOW_MS,
+  RELAY_BUDGET_PER_WINDOW,
   PLAYER_FX_TYPES,
   PLAYER_FX_MIN_INTERVAL_MS,
   SWING_COOLDOWN_MS,

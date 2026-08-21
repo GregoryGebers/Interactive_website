@@ -18,8 +18,11 @@ function registerEditorRoutes(app) {
     res.sendFile(EDITOR_HTML_PATH);
   });
 
+  // The listing is cached in the service (see its LISTING_TTL_MS note); let the
+  // browser hold it briefly too. This used to be `no-store` over a synchronous
+  // walk of thousands of files — a free way to stall the event loop.
   app.get('/api/editor-assets', (req, res) => {
-    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Cache-Control', 'public, max-age=60');
     res.json({ assets: listEditorAssets() });
   });
 }

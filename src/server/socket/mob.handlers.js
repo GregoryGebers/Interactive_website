@@ -14,6 +14,21 @@ const {
 //   • respawns the next mob shortly after one dies.
 const MOB_TICK_MS = 40;              // 25 ticks/sec
 let lastTick = Date.now();
+let mobTimer = null;
+let mobLoopActive = false;
+
+// Is the mob simulation actually running? A scene with no spawners disables it
+// entirely, which is easy to do by accident in the editor and otherwise leaves
+// no trace after startup — /health reports this.
+function isMobLoopRunning() {
+  return mobLoopActive;
+}
+
+function stopMobLoop() {
+  if (mobTimer) clearTimeout(mobTimer);
+  mobTimer = null;
+  mobLoopActive = false;
+}
 
 function startMobLoop(io) {
   if (!hasSpawners()) {
@@ -22,8 +37,28 @@ function startMobLoop(io) {
   }
   // First mob appears almost immediately on boot.
   gameState.mobRespawnAt = Date.now() + 500;
+  mobLoopActive = true;
 
-  setInterval(() => {
+  // A self-correcting scheduler, not setInterval. Under event-loop pressure
+  // setInterval queues ticks up and then fires them back-to-back, which makes
+  // mob motion stutter and jump; targeting an absolute next-tick time instead
+  // lets a late tick simply run late and re-aim, without a burst.
+  let nextTickAt = Date.now() + MOB_TICK_MS;
+
+  const scheduleNext = () => {
+    const delay = Math.max(0, nextTickAt - Date.now());
+    mobTimer = setTimeout(tick, delay);
+    // Never let the mob loop hold the process open during shutdown.
+    if (mobTimer.unref) mobTimer.unref();
+  };
+
+  const tick = () => {
+    nextTickAt += MOB_TICK_MS;
+    // If we fell far behind (a long stall), re-aim rather than trying to catch
+    // up with a burst of ticks the simulation cannot use anyway.
+    const drift = Date.now() - nextTickAt;
+    if (drift > MOB_TICK_MS * 5) nextTickAt = Date.now() + MOB_TICK_MS;
+
     try {
       const now = Date.now();
       const dt = Math.min(0.1, (now - lastTick) / 1000);
@@ -60,8 +95,15 @@ function startMobLoop(io) {
       io.emit('mob-move', snapshot(mob));
     } catch (err) {
       console.error('[mob] loop error:', err);
+    } finally {
+      // MUST be in a finally: the "no mob yet" branch above returns early, and
+      // with a self-rescheduling timer (unlike setInterval) that would end the
+      // loop permanently.
+      if (mobLoopActive) scheduleNext();
     }
-  }, MOB_TICK_MS);
+  };
+
+  scheduleNext();
 }
 
 // Called from the combat handler when a player's swing lands on the mob.
@@ -91,4 +133,4 @@ function damageMobFromSwing(io, attackerId, dir, attacker) {
   return true;
 }
 
-module.exports = { startMobLoop, damageMobFromSwing };
+module.exports = { startMobLoop, stopMobLoop, isMobLoopRunning, damageMobFromSwing };

@@ -110,7 +110,7 @@
         const cfg = type && type.anim[clip];
         const im = new Image();
         if (cfg) im.src = cfg.src;
-        im.onload = () => { if (typeof gameLoop === 'function') requestAnimationFrame(gameLoop); };
+        im.onload = () => { if (typeof startGameLoop === 'function') startGameLoop(); };
         mobImages[key] = im;
       }
       return mobImages[key];

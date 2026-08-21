@@ -56,7 +56,14 @@ function registerPlayerHandlers(socket, { io }) {
       gameState.playerCosmetics[socket.id] = owned;
       socket.data.persistentState = { ...saved, equippedSkin: skin };
 
-      gameState.lastActivityAt[socket.id] = Date.now(); // joining counts as activity
+      const joinedAt = Date.now();
+      gameState.lastActivityAt[socket.id] = joinedAt; // joining counts as activity
+      gameState.joinedAt[socket.id] = joinedAt;       // gates the Twitch relay
+
+      gameState.stats.totalJoins++;
+      const live = Object.keys(gameState.players).length;
+      if (live > gameState.stats.peakPlayers) gameState.stats.peakPlayers = live;
+
       socket.broadcast.emit('new-player', { id: socket.id, ...gameState.players[socket.id] });
       pushPersistentState(socket, { bumpRevision: false });
     } catch (err) {
@@ -71,6 +78,7 @@ function registerPlayerHandlers(socket, { io }) {
     delete gameState.lastSwingAt[socket.id];
     delete gameState.invulnerableUntil[socket.id];
     delete gameState.lastPlayerFxAt[socket.id];
+    delete gameState.relayHistory[socket.id];
 
     if (!gameState.players[socket.id]) return; // never joined — nothing to clean up
 
@@ -83,6 +91,7 @@ function registerPlayerHandlers(socket, { io }) {
       delete gameState.playerUpgrades[socket.id];
       delete gameState.playerCosmetics[socket.id];
       delete gameState.lastActivityAt[socket.id];
+      delete gameState.joinedAt[socket.id];
       delete gameState.pendingRemoval[socket.id];
       io.emit('remove-player', socket.id);
     }, DISCONNECT_GRACE_MS);
